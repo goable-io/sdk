@@ -1,0 +1,60 @@
+{
+  "name": "@goable-io/sdk",
+  "version": "0.3.0",
+  "description": "TypeScript client for the Goable API — suitability scoring for outdoor activities.",
+  "private": false,
+  "type": "module",
+  "license": "MIT",
+  "author": "Fabio Carucci <contact@fabio-carucci.com>",
+  "homepage": "https://github.com/goable-io/sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/goable-io/sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/goable-io/sdk/issues"
+  },
+  "keywords": [
+    "goable",
+    "weather",
+    "scoring",
+    "outdoor",
+    "forecast",
+    "kitesurf",
+    "api-client",
+    "sdk"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "pnpm@11.3.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "gen": "tsx scripts/gen.ts",
+    "prepublishOnly": "tsc",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "openapi-typescript": "^7.13.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

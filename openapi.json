@@ -1,0 +1,2777 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Goable API",
+    "version": "0.0.0",
+    "description": "Multi-tenant suitability scoring for outdoor activities across water, snow, air, and land families. Real-time forecast scoring, probabilistic ensembles, LLM intelligence narratives, historical + climate-decadal projections, personalized decision agent, counterfactual analysis, and parametric underwriting.",
+    "contact": {
+      "name": "Goable",
+      "url": "https://goable.io"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.goable.io",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Goable-Key",
+        "description": "API key issued per tenant — canonical production header is `X-Goable-Key`. The API also accepts `Authorization: Bearer <key>` for legacy callers but new integrations should use the X-Goable-Key form. Format: 48-char token; prefix (first 16 chars) is DB-indexed, full token SHA-256 hashed. Mint a key from the tenant portal at https://console.goable.io/portal/keys."
+      }
+    },
+    "schemas": {
+      "GeoPoint": {
+        "type": "object",
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "lat": {
+            "type": "number",
+            "example": 36.0133
+          },
+          "lng": {
+            "type": "number",
+            "example": -5.6044
+          }
+        }
+      },
+      "TimeWindow": {
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Machine-readable error code"
+          },
+          "message": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "Verdict": {
+        "type": "string",
+        "enum": [
+          "unsafe",
+          "poor",
+          "marginal",
+          "fair",
+          "favorable",
+          "excellent"
+        ]
+      },
+      "ScoreResponse": {
+        "type": "object",
+        "required": [
+          "score",
+          "verdict",
+          "confidence",
+          "breakdown",
+          "physics",
+          "alerts",
+          "eco"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "dimension": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "weight": {
+                  "type": "number"
+                },
+                "contribution": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "physics": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "alerts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "eco": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "distribution": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Present on ensemble requests"
+          },
+          "confidenceDetail": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "calibration_provenance": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "assimilation": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "ScoreSeriesResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "series"
+        ],
+        "properties": {
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "score",
+                "verdict"
+              ],
+              "properties": {
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "verdict": {
+                  "$ref": "#/components/schemas/Verdict"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ScoreMultiResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "activity",
+                "score",
+                "verdict"
+              ],
+              "properties": {
+                "activity": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "verdict": {
+                  "$ref": "#/components/schemas/Verdict"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "summary": "Liveness probe",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Process is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health/ready": {
+      "get": {
+        "summary": "Readiness probe (DB + skill lookup + LLM config)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready or degraded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unhealthy (critical check failed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score": {
+      "post": {
+        "summary": "Score an activity at a location + time window",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "activity",
+                  "location"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activity": {
+                    "type": "string",
+                    "example": "kitesurfing"
+                  },
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/TimeWindow"
+                  },
+                  "ensemble": {
+                    "type": "boolean",
+                    "description": "L2a probabilistic ensemble (Pro+)"
+                  },
+                  "members": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Score 0-100 + verdict + confidence + eco + calibration_provenance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Plan upgrade required (ensemble on Free/Starter)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No profile for activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score/series": {
+      "post": {
+        "summary": "Time-series scoring across a window",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "activity",
+                  "location",
+                  "window"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activity": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/TimeWindow"
+                  },
+                  "granularity": {
+                    "type": "string",
+                    "enum": [
+                      "hourly",
+                      "3-hourly",
+                      "daily"
+                    ]
+                  },
+                  "ensemble": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-step scores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreSeriesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No profile for activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error / window too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score/multi": {
+      "post": {
+        "summary": "Score multiple activities at one location",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "activities",
+                  "location"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "maxItems": 10
+                  },
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/TimeWindow"
+                  },
+                  "ensemble": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-activity scores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreMultiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error / max activities exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score/historical": {
+      "post": {
+        "summary": "Historical climatology scoring (Pro+)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "activity",
+                  "location",
+                  "yearsRange",
+                  "granularity",
+                  "selector"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activity": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "yearsRange": {
+                    "type": "object",
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "from": {
+                        "type": "integer",
+                        "minimum": 1940
+                      },
+                      "to": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "granularity": {
+                    "type": "string",
+                    "enum": [
+                      "month",
+                      "week",
+                      "day-of-year",
+                      "daypart"
+                    ]
+                  },
+                  "selector": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "month": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 12
+                      },
+                      "weekOfYear": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 53
+                      },
+                      "dayOfYear": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 366
+                      },
+                      "daypart": {
+                        "type": "string",
+                        "enum": [
+                          "morning",
+                          "midday",
+                          "afternoon",
+                          "evening"
+                        ]
+                      }
+                    }
+                  },
+                  "failOnMarineGap": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Percentiles + exceedance + verdict frequency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score/portfolio": {
+      "post": {
+        "summary": "Multi-spot portfolio scoring with joint variance",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "spots",
+                  "yearsRange",
+                  "granularity",
+                  "selector"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "spots": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "location",
+                        "activity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "location": {
+                          "$ref": "#/components/schemas/GeoPoint"
+                        },
+                        "activity": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "spotId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "yearsRange": {
+                    "type": "object",
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "from": {
+                        "type": "integer",
+                        "minimum": 1940
+                      },
+                      "to": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "granularity": {
+                    "type": "string",
+                    "enum": [
+                      "month",
+                      "week",
+                      "day-of-year",
+                      "daypart"
+                    ]
+                  },
+                  "selector": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "month": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 12
+                      },
+                      "weekOfYear": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 53
+                      },
+                      "dayOfYear": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 366
+                      },
+                      "daypart": {
+                        "type": "string",
+                        "enum": [
+                          "morning",
+                          "midday",
+                          "afternoon",
+                          "evening"
+                        ]
+                      }
+                    }
+                  },
+                  "correlation": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "model": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "exponential"
+                        ]
+                      },
+                      "lengthKm": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    }
+                  },
+                  "cancellationThreshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Portfolio score + per-spot contributions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score/explain-counterfactual": {
+      "post": {
+        "summary": "Counterfactual analysis: binding constraint + sensitivities + best window/spot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "activity",
+                  "spot",
+                  "window"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activity": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "spot": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/TimeWindow"
+                  },
+                  "include": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "marginal_sensitivities": {
+                        "type": "boolean"
+                      },
+                      "binding_constraint": {
+                        "type": "boolean"
+                      },
+                      "best_window_24h": {
+                        "type": "boolean"
+                      },
+                      "best_nearby_spot_km": {
+                        "type": "number",
+                        "maximum": 200
+                      },
+                      "natural_language": {
+                        "type": "boolean",
+                        "description": "LLM explanation (Pro+)"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "binding_constraint + marginal_sensitivities + best_window_24h + best_nearby_spots + optional natural_language",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "natural_language=true requires Pro+",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No profile for activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/decision": {
+      "post": {
+        "summary": "Personalized go/no-go decision (Pro+)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "user_pseudonym",
+                  "activity",
+                  "spot",
+                  "window"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "user_pseudonym": {
+                    "type": "string",
+                    "minLength": 32,
+                    "pattern": "^[0-9a-fA-F]+$",
+                    "description": "SHA256(user_id + secret)[:32], hex ≥32 chars. NEVER PII."
+                  },
+                  "activity": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "spot": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/TimeWindow"
+                  },
+                  "user_profile": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "experience": {
+                        "type": "string",
+                        "enum": [
+                          "beginner",
+                          "intermediate",
+                          "advanced",
+                          "expert"
+                        ]
+                      },
+                      "weight_kg": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 300
+                      },
+                      "risk_tolerance": {
+                        "type": "string",
+                        "enum": [
+                          "conservative",
+                          "moderate",
+                          "aggressive"
+                        ]
+                      },
+                      "owned_gear": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        "maxItems": 20
+                      }
+                    }
+                  },
+                  "training_consent": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "score + verdict + decision block + degraded_mode + advisory_notice",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No profile for activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/decision/user-data/{pseudonym}": {
+      "delete": {
+        "summary": "GDPR Art. 17 right-to-erasure for a pseudonym",
+        "parameters": [
+          {
+            "name": "pseudonym",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted. Headers: X-Anonymized-Rows, X-Anonymized-Decision-Runs, X-Receipt"
+          }
+        }
+      }
+    },
+    "/v1/intelligence/explain": {
+      "post": {
+        "summary": "LLM narrative explanation of a score (L2c, Pro+)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "location"
+                ],
+                "additionalProperties": false,
+                "description": "Provide exactly one of scoreResult or session_id.",
+                "properties": {
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "scoreResult": {
+                    "$ref": "#/components/schemas/ScoreResponse"
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "en",
+                      "it"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "enum": [
+                      "claude-haiku-4-5-20251001",
+                      "claude-sonnet-4-6"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Natural-language explanation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intelligence/briefing": {
+      "post": {
+        "summary": "LLM multi-slot briefing (L2c, Pro+)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "activity",
+                  "slots"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activity": {
+                    "type": "string"
+                  },
+                  "slots": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "en",
+                      "it"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "enum": [
+                      "claude-haiku-4-5-20251001",
+                      "claude-sonnet-4-6"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Briefing text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projections": {
+      "post": {
+        "summary": "Climate-decadal activity viability projection (Scale)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "spot",
+                  "scenarios"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "spot": {
+                    "type": "object",
+                    "required": [
+                      "location",
+                      "activity"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "location": {
+                        "$ref": "#/components/schemas/GeoPoint"
+                      },
+                      "activity": {
+                        "type": "string"
+                      },
+                      "spotId": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "SSP1-2.6",
+                        "SSP2-4.5",
+                        "SSP3-7.0",
+                        "SSP5-8.5"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "horizonDecades": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "baselineDecade": {
+                    "type": "string",
+                    "enum": [
+                      "2020s",
+                      "2030s"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-decade projection distributions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Scale plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/underwriting/quote": {
+      "post": {
+        "summary": "Parametric underwriting quote (Scale)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "coverageWindow"
+                ],
+                "additionalProperties": true,
+                "description": "Provide exactly one of spot or portfolio.",
+                "properties": {
+                  "spot": {
+                    "type": "object",
+                    "required": [
+                      "location",
+                      "activity"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "location": {
+                        "$ref": "#/components/schemas/GeoPoint"
+                      },
+                      "activity": {
+                        "type": "string"
+                      },
+                      "spotId": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "portfolio": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "location",
+                        "activity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "location": {
+                          "$ref": "#/components/schemas/GeoPoint"
+                        },
+                        "activity": {
+                          "type": "string"
+                        },
+                        "spotId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "coverageWindow": {
+                    "type": "object",
+                    "required": [
+                      "monthFrom",
+                      "dayFrom",
+                      "monthTo",
+                      "dayTo"
+                    ],
+                    "additionalProperties": true,
+                    "properties": {
+                      "monthFrom": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 12
+                      },
+                      "dayFrom": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 31
+                      },
+                      "monthTo": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 12
+                      },
+                      "dayTo": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 31
+                      }
+                    }
+                  },
+                  "payout": {
+                    "type": "object",
+                    "required": [
+                      "amount",
+                      "currency"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "amount": {
+                        "type": "number"
+                      },
+                      "currency": {
+                        "type": "string",
+                        "enum": [
+                          "EUR",
+                          "USD",
+                          "GBP",
+                          "CHF"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Premium + bindable policy terms",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Scale plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/underwriting/bind": {
+      "post": {
+        "summary": "Bind a parametric policy (Scale)",
+        "description": "Convert a recent /v1/underwriting/quote into a bound policy. Submit the quoteId (≤24h old); returns a policyId + immutable cohortHash anchoring the bound weather sample set.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "quoteId"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                  "quoteId": {
+                    "type": "string"
+                  },
+                  "premiumConfirmation": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bound policy id + cohort hash + settlement schedule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Scale plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Quote expired or not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/underwriting/evaluate": {
+      "post": {
+        "summary": "Read-only payout projection for a bound policy (Scale)",
+        "description": "Returns the current accrued shortfall + projected payout for a bound policy. Does NOT settle — settlement runs automatically on a cron at policy expiry.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "policyId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "policyId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accrued shortfall + projected payout per currency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Scale plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Policy not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score/{sessionId}/outcome": {
+      "post": {
+        "summary": "Report observed outcome for a scored session",
+        "description": "Close the calibration loop. Submit the actual outcome (ran/cancelled/no_show/rescheduled/note) of a /v1/score session. The calibration pipeline + forecast verification + drift monitor consume these. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't).",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Session UUID returned in the /v1/score response metadata."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "outcome_type"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "outcome_type": {
+                    "type": "string",
+                    "enum": [
+                      "ran",
+                      "cancelled",
+                      "rescheduled",
+                      "no_show",
+                      "note"
+                    ]
+                  },
+                  "detail": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted (queued for the next calibration batch)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing scope: outcomes:write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score/difficulty": {
+      "post": {
+        "summary": "Skill-conditioned scoring",
+        "description": "Same scoring engine, but conditioned on a rider/operator skill level. Returns the score curve as a function of skill so a booking flow can branch (\"good for beginners\" vs \"experts only\").",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "activity",
+                  "location"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activity": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/TimeWindow"
+                  },
+                  "riderSkillLevels": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "description": "Skill points (0-1) to score. Defaults to 5 quantile points."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Score per skill level + difficulty band",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No profile for activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recommend-spot": {
+      "post": {
+        "summary": "Spot recommender — inverse query (L10)",
+        "description": "Given (activity, region center, radius, window) → top-K ranked sub-spots in the catalog. Composition of L1-L3 scoring + L4.6 confidence + L6 personal blend (Pro+, when pseudonym supplied). Plan caps: radius 25/50/200/1000 km, topK 5/10/20/50 across Free / Starter / Pro / Scale. Personalization Pro+ only. Hard-gated candidates (lightning ≥ 0.85, AQI hazardous) are dropped from results; `allGated=true` distinguishes 'all in-radius spots were unsafe' from 'no spots in radius at all'.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "activity",
+                  "regionCenter",
+                  "radiusKm",
+                  "topK"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activity": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "regionCenter": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "radiusKm": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "topK": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/TimeWindow"
+                  },
+                  "userPseudonym": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "Optional booking-platform-side pseudonym. When present, Pro+ tenants get personalization via the L6 cold-start blend (cap 0.5 weight)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ranked top-K sub-spots + observability metadata. The optional `coverage` field appears only on empty results from a catalog gap (not from hard-gating).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "spotSlug": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "location": {
+                            "$ref": "#/components/schemas/GeoPoint"
+                          },
+                          "distanceKm": {
+                            "type": "number"
+                          },
+                          "score": {
+                            "type": "number"
+                          },
+                          "effectiveScore": {
+                            "type": "number"
+                          },
+                          "verdict": {
+                            "type": "string"
+                          },
+                          "personalScore": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "personalWeight": {
+                            "type": "number"
+                          },
+                          "rank": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "allGated": {
+                      "type": "boolean"
+                    },
+                    "totalCandidates": {
+                      "type": "integer"
+                    },
+                    "rankedCandidates": {
+                      "type": "integer"
+                    },
+                    "effectiveRadiusKm": {
+                      "type": "number"
+                    },
+                    "effectiveTopK": {
+                      "type": "integer"
+                    },
+                    "personalizationApplied": {
+                      "type": "boolean"
+                    },
+                    "latencyMs": {
+                      "type": "integer"
+                    },
+                    "coverage": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "no_subspots_in_radius"
+                              ]
+                            },
+                            "nearestSubSpot": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "slug": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "distanceKm": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "slug",
+                                "name",
+                                "distanceKm"
+                              ]
+                            },
+                            "suggestedAction": {
+                              "type": "string",
+                              "enum": [
+                                "expand_radius"
+                              ]
+                            },
+                            "suggestedRadiusKm": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "nearestSubSpot",
+                            "suggestedAction",
+                            "suggestedRadiusKm"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "no_subspots_for_activity"
+                              ]
+                            },
+                            "suggestedAction": {
+                              "type": "string",
+                              "enum": [
+                                "request_coverage"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "suggestedAction"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Plan limit exceeded (radius or topK above plan cap)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error or unknown activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Spatial resolver not wired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intelligence/edge-case": {
+      "post": {
+        "summary": "LLM analysis of a borderline / surprising score (L2c, Pro+)",
+        "description": "Asks the LLM to inspect a score that's near a verdict boundary or contradicts operator intuition. Returns a narrative + a structured `limiting_class` taxonomy entry.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "location"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "scoreResult": {
+                    "$ref": "#/components/schemas/ScoreResponse"
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "en",
+                      "it"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "enum": [
+                      "claude-haiku-4-5-20251001",
+                      "claude-sonnet-4-6"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Narrative + limiting_class",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projections/portfolio": {
+      "post": {
+        "summary": "Climate projections across a portfolio of spots (Scale)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "spots",
+                  "scenarios"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "spots": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "location",
+                        "activity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "location": {
+                          "$ref": "#/components/schemas/GeoPoint"
+                        },
+                        "activity": {
+                          "type": "string"
+                        },
+                        "spotId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "SSP1-2.6",
+                        "SSP2-4.5",
+                        "SSP3-7.0",
+                        "SSP5-8.5"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "horizonDecades": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "baselineDecade": {
+                    "type": "string",
+                    "enum": [
+                      "2020s",
+                      "2030s"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-spot per-decade projection distributions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Scale plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projections/adaptation-report": {
+      "post": {
+        "summary": "Climate adaptation report for an operator (Scale)",
+        "description": "Combines projections across a portfolio + qualitative summary of which dimensions are likely to bind (wind shifts, water-temp shifts, etc.). Designed as input for a tourism-board adaptation plan.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "spots",
+                  "scenarios"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                  "spots": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "location",
+                        "activity"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "location": {
+                          "$ref": "#/components/schemas/GeoPoint"
+                        },
+                        "activity": {
+                          "type": "string"
+                        },
+                        "spotId": {
+                          "type": "string"
+                        },
+                        "subSpotSlug": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "SSP1-2.6",
+                        "SSP2-4.5",
+                        "SSP3-7.0",
+                        "SSP5-8.5"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "horizonDecades": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Adaptation report + binding-dimension summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Scale plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observations": {
+      "post": {
+        "summary": "Submit station observation for data assimilation (Pro+)",
+        "description": "Push tenant-station observations (wind / wave / temperature / etc.) into the 0-6h assimilation window. The optimal-interpolation blending pulls them into forecast samples for nearby spots, improving short-horizon skill.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "stationId",
+                  "observedAt",
+                  "values"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "stationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "observedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "qualityFlags": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Station not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observations/stations": {
+      "get": {
+        "summary": "List tenant stations",
+        "responses": {
+          "200": {
+            "description": "Array of stations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Register a tenant observation station (Pro+)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "location"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "elevationM": {
+                    "type": "number"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Station created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observations/stations/{stationId}": {
+      "patch": {
+        "summary": "Update a station (Pro+)",
+        "parameters": [
+          {
+            "name": "stationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "$ref": "#/components/schemas/GeoPoint"
+                  },
+                  "elevationM": {
+                    "type": "number"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated station",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Requires Pro+ plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Station not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/public/signup": {
+      "post": {
+        "summary": "Self-service tenant signup (no auth)",
+        "security": [],
+        "description": "Public endpoint, IP-rate-limited (3 attempts / 24h / IP). Creates a tenant + sends a magic-link to the contact email. Always returns 202 on success — never reveals whether an email is already registered. Optional Cloudflare Turnstile token strengthens the gate.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "displayName",
+                  "contactEmail",
+                  "acceptTerms"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "displayName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "contactEmail": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "acceptTerms": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ],
+                    "description": "Must be true — records ToS / Privacy / DPA acceptance."
+                  },
+                  "turnstileToken": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted — magic-link sent if signup valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "IP rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/public/catalog-stats": {
+      "get": {
+        "summary": "Open catalogue coverage stats (no auth)",
+        "security": [],
+        "description": "Live coverage numbers for the open activity catalogue (CC BY 4.0). Returns totals across activities · sub-spots · clusters · regions · countries plus a per-activity breakdown with country codes + status (`seeded` ≥10 sub-spots / `partial` 1-9 / `empty` 0). Edge-cached for 5 minutes — new sub-spots ship via PR + release cycle, not at runtime. Same JSON the /catalog landing renders; expose this surface for marketing / partner sites that want to embed live numbers without scraping HTML.",
+        "responses": {
+          "200": {
+            "description": "Live coverage stats from the @goable-io/profiles-catalog package",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "computedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO timestamp the bundled JSON was computed at"
+                    },
+                    "catalogVersion": {
+                      "type": "string",
+                      "description": "Catalog package version (mirrors package.json)"
+                    },
+                    "totals": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "activities": {
+                          "type": "integer"
+                        },
+                        "subSpots": {
+                          "type": "integer"
+                        },
+                        "clusters": {
+                          "type": "integer"
+                        },
+                        "regions": {
+                          "type": "integer"
+                        },
+                        "countries": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "activities",
+                        "subSpots",
+                        "clusters",
+                        "regions",
+                        "countries"
+                      ]
+                    },
+                    "byActivity": {
+                      "type": "array",
+                      "description": "One entry per base profile, sorted DESC by subSpotCount.",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "family": {
+                            "type": "string",
+                            "enum": [
+                              "water",
+                              "snow",
+                              "air",
+                              "land"
+                            ]
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "subSpotCount": {
+                            "type": "integer"
+                          },
+                          "clusterCount": {
+                            "type": "integer"
+                          },
+                          "countryCount": {
+                            "type": "integer"
+                          },
+                          "countries": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "ISO 3166-1 alpha-2 code"
+                            }
+                          },
+                          "clusters": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "slug": {
+                                  "type": "string"
+                                },
+                                "displayName": {
+                                  "type": "string"
+                                },
+                                "countryCode": {
+                                  "type": "string"
+                                },
+                                "subSpotCount": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "seeded",
+                              "partial",
+                              "empty"
+                            ],
+                            "description": "seeded ≥10 sub-spots · partial 1-9 · empty 0"
+                          },
+                          "lastUpdatedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time",
+                            "description": "Newest commit touching the activity dir (null when no sub-spots yet)"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "computedAt",
+                    "catalogVersion",
+                    "totals",
+                    "byActivity"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

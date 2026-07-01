@@ -1,0 +1,58 @@
+name: Refresh OpenAPI
+
+# Keeps the committed openapi.json in sync with the live public API contract.
+# Fetches https://api.goable.io/docs/openapi.json, regenerates types, and opens
+# a PR if anything changed. A maintainer reviews + merges → triggers a release.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily at 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  SPEC_URL: "https://api.goable.io/docs/openapi.json"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Enable corepack
+        run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - name: Fetch live contract + regenerate
+        run: |
+          set -euo pipefail
+          # Fetch and normalise to the committed formatting (2-space indent,
+          # trailing newline, same key order) so diffs stay minimal and stable.
+          curl -sSf "$SPEC_URL" -o openapi.raw.json
+          node -e "const fs=require('fs');const s=fs.readFileSync('openapi.raw.json','utf8');fs.writeFileSync('openapi.json', JSON.stringify(JSON.parse(s), null, 2) + '\n');"
+          rm -f openapi.raw.json
+          pnpm gen
+
+      - name: Verify freshness guard still passes
+        run: pnpm test
+
+      - name: Open PR on drift
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore: sync OpenAPI from live API"
+          title: "chore: sync OpenAPI from live API"
+          body: |
+            Automated sync of `openapi.json` from the live contract at
+            `${{ env.SPEC_URL }}`, with regenerated `src/generated/api.ts`.
+
+            Review the diff, then merge to cut a release.
+          branch: chore/sync-openapi
+          delete-branch: true
+          add-paths: |
+            openapi.json
+            src/generated/api.ts
