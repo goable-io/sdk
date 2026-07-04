@@ -12,6 +12,7 @@
 export { GoableClient } from "./client.ts"
 export type { FetchLike, GoableClientOptions } from "./client.ts"
 export {
+  DriftActiveError,
   GoableApiError,
   GoableNetworkError,
   type ZodIssueLike,
