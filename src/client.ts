@@ -5,22 +5,47 @@
 
 import { GoableNetworkError, toApiError } from "./errors.ts"
 import type {
+  AdaptationReportRequest,
+  AdaptationReportResponse,
+  BindPolicyRequest,
+  BindPolicyResponse,
   BriefingRequest,
   BriefingResponse,
+  CatalogStatsResponse,
   CounterfactualRequest,
   CounterfactualResponse,
+  CreateStationRequest,
+  CreateStationResponse,
   DecisionRequest,
   DecisionResponse,
   DeleteUserDataResult,
+  EdgeCaseRequest,
+  EdgeCaseResponse,
+  EvaluatePolicyResponse,
   ExplainRequest,
   ExplainResponse,
   HealthResponse,
+  ListPoliciesQuery,
+  ListPoliciesResponse,
+  ListStationsResponse,
+  PolicyResponse,
+  ProjectionsPortfolioRequest,
+  ProjectionsPortfolioResponse,
   ProjectionsRequest,
   ProjectionsResponse,
+  PublicSignupRequest,
+  PublicSignupResponse,
+  QuoteByIdResponse,
   QuoteRequest,
   QuoteResponse,
+  RecentObservationsQuery,
+  RecentObservationsResponse,
   RecommendSpotRequest,
   RecommendSpotResponse,
+  ReportOutcomeRequest,
+  ReportOutcomeResponse,
+  ScoreDifficultyRequest,
+  ScoreDifficultyResponse,
   ScoreHistoricalRequest,
   ScoreHistoricalResponse,
   ScoreMultiRequest,
@@ -31,6 +56,15 @@ import type {
   ScoreResponse,
   ScoreSeriesRequest,
   ScoreSeriesResponse,
+  SettlePolicyRequest,
+  SettlePolicyResponse,
+  SubmitObservationsRequest,
+  SubmitObservationsResponse,
+  SustainabilityIndexQuery,
+  SustainabilityIndexResponse,
+  UpdateStationRequest,
+  UpdateStationResponse,
+  VerificationExportQuery,
 } from "./types.ts"
 
 export type FetchLike = (
@@ -141,6 +175,152 @@ export class GoableClient {
     return this.request<RecommendSpotResponse>("POST", "/v1/recommend-spot", input)
   }
 
+  /** L15 — skill-conditioned difficulty grids per scoring dimension (Pro+). */
+  scoreDifficulty(input: ScoreDifficultyRequest): Promise<ScoreDifficultyResponse> {
+    return this.request<ScoreDifficultyResponse>("POST", "/v1/score/difficulty", input)
+  }
+
+  /** Close the calibration loop: report the observed outcome of a scored
+   *  session. Requires the `outcomes:write` scope. */
+  reportOutcome(sessionId: string, input: ReportOutcomeRequest): Promise<ReportOutcomeResponse> {
+    return this.request<ReportOutcomeResponse>(
+      "POST",
+      `/v1/score/${encodeURIComponent(sessionId)}/outcome`,
+      input,
+    )
+  }
+
+  /** LLM edge-case narrative for a marginal score. */
+  edgeCase(input: EdgeCaseRequest): Promise<EdgeCaseResponse> {
+    return this.request<EdgeCaseResponse>("POST", "/v1/intelligence/edge-case", input)
+  }
+
+  /** T3 — multi-spot climate-decadal projections (Scale). */
+  projectionsPortfolio(input: ProjectionsPortfolioRequest): Promise<ProjectionsPortfolioResponse> {
+    return this.request<ProjectionsPortfolioResponse>("POST", "/v1/projections/portfolio", input)
+  }
+
+  /** T3 — adaptation report across months × scenarios × decades (Scale). */
+  adaptationReport(input: AdaptationReportRequest): Promise<AdaptationReportResponse> {
+    return this.request<AdaptationReportResponse>("POST", "/v1/projections/adaptation-report", input)
+  }
+
+  // ── underwriting policy lifecycle (Scale) ─────────────────────────────────
+  /** Fetch a stored quote by id. */
+  getQuote(id: string): Promise<QuoteByIdResponse> {
+    return this.request<QuoteByIdResponse>("GET", `/v1/underwriting/quote/${encodeURIComponent(id)}`)
+  }
+
+  /**
+   * Bind a recent quote into a policy. Responds 201. A watch-level drift event
+   * on the resolved cell surfaces as `driftAdvisories` on success; a
+   * warning/critical event refuses the bind with `422 DRIFT_ACTIVE`, thrown as
+   * a {@link DriftActiveError}.
+   */
+  bindPolicy(input: BindPolicyRequest): Promise<BindPolicyResponse> {
+    return this.request<BindPolicyResponse>("POST", "/v1/underwriting/policy/bind", input)
+  }
+
+  /** List the calling tenant's bound policies (paginated, boundAt DESC). */
+  listPolicies(query?: ListPoliciesQuery): Promise<ListPoliciesResponse> {
+    return this.request<ListPoliciesResponse>("GET", `/v1/underwriting/policy${toQuery(query)}`)
+  }
+
+  /** Fetch a single policy + its payout events. */
+  getPolicy(policyId: string): Promise<PolicyResponse> {
+    return this.request<PolicyResponse>("GET", `/v1/underwriting/policy/${encodeURIComponent(policyId)}`)
+  }
+
+  /** Re-evaluate a bound policy against the historical archive; inserts any
+   *  newly detected payout events. No request body. */
+  evaluatePolicy(policyId: string): Promise<EvaluatePolicyResponse> {
+    return this.request<EvaluatePolicyResponse>(
+      "POST",
+      `/v1/underwriting/policy/${encodeURIComponent(policyId)}/evaluate`,
+    )
+  }
+
+  /**
+   * Settle a bound policy. PLATFORM-OPS ONLY — requires the `platform_admin`
+   * scope (a cross-tenant underwriter operation, normally run by the daily
+   * settlement cron). Not a policyholder self-service action; tenant
+   * integrations should not call this.
+   */
+  settlePolicy(policyId: string, input: SettlePolicyRequest): Promise<SettlePolicyResponse> {
+    return this.request<SettlePolicyResponse>(
+      "POST",
+      `/v1/underwriting/policy/${encodeURIComponent(policyId)}/settle`,
+      input,
+    )
+  }
+
+  // ── observations / nowcasting (L5.3) ──────────────────────────────────────
+  /** Register a tenant observation station. Responds 201. */
+  createStation(input: CreateStationRequest): Promise<CreateStationResponse> {
+    return this.request<CreateStationResponse>("POST", "/v1/observations/stations", input)
+  }
+
+  /** List the calling tenant's observation stations. */
+  listStations(): Promise<ListStationsResponse> {
+    return this.request<ListStationsResponse>("GET", "/v1/observations/stations")
+  }
+
+  /** Patch a station (partial update). */
+  updateStation(stationId: string, input: UpdateStationRequest): Promise<UpdateStationResponse> {
+    return this.request<UpdateStationResponse>(
+      "PATCH",
+      `/v1/observations/stations/${encodeURIComponent(stationId)}`,
+      input,
+    )
+  }
+
+  /** Push station observations into the 0-6h assimilation window (Pro+).
+   *  Responds 202. */
+  submitObservations(input: SubmitObservationsRequest): Promise<SubmitObservationsResponse> {
+    return this.request<SubmitObservationsResponse>("POST", "/v1/observations", input)
+  }
+
+  /** Most-recent observations for one of the tenant's stations. */
+  recentObservations(
+    stationId: string,
+    query?: RecentObservationsQuery,
+  ): Promise<RecentObservationsResponse> {
+    return this.request<RecentObservationsResponse>(
+      "GET",
+      `/v1/observations/stations/${encodeURIComponent(stationId)}/recent${toQuery(query)}`,
+    )
+  }
+
+  // ── public / research (no-auth surfaces) ──────────────────────────────────
+  /** Public Goable Sustainability Index (JSON-LD, CC BY 4.0). */
+  sustainabilityIndex(query: SustainabilityIndexQuery): Promise<SustainabilityIndexResponse> {
+    return this.request<SustainabilityIndexResponse>(
+      "GET",
+      `/v1/public/sustainability-index${toQuery(query)}`,
+    )
+  }
+
+  /** Public Stream F forecast-verification export. Returns the raw NDJSON
+   *  stream as a string (one cell per line + a trailing meta line). */
+  verificationExport(query?: VerificationExportQuery): Promise<string> {
+    return this.requestText("GET", `/v1/research/verification/export${toQuery(query)}`)
+  }
+
+  /** Public L15 Difficulty Atlas export. Returns the raw NDJSON stream. */
+  difficultyAtlasExport(): Promise<string> {
+    return this.requestText("GET", "/v1/research/difficulty-atlas/export.jsonl")
+  }
+
+  /** Self-service tenant signup (no auth). Always 202 on success. */
+  publicSignup(input: PublicSignupRequest): Promise<PublicSignupResponse> {
+    return this.request<PublicSignupResponse>("POST", "/v1/public/signup", input)
+  }
+
+  /** Open catalogue coverage stats (no auth). */
+  catalogStats(): Promise<CatalogStatsResponse> {
+    return this.request<CatalogStatsResponse>("GET", "/v1/public/catalog-stats")
+  }
+
   /** GDPR Art. 17 erasure. Surfaces the receipt headers from a 204. */
   async deleteUserData(pseudonym: string): Promise<DeleteUserDataResult> {
     const res = await this.rawRequest("DELETE", `/v1/decision/user-data/${encodeURIComponent(pseudonym)}`)
@@ -167,6 +347,28 @@ export class GoableClient {
     const parsed = await safeJson(res)
     if (!res.ok) throw toApiError(res.status, parsed)
     return parsed as T
+  }
+
+  /** Like {@link request} but returns the raw response body as text — used for
+   *  the NDJSON research streams, which are not a single JSON document. */
+  private async requestText(method: string, path: string): Promise<string> {
+    const res = await this.rawRequest(method, path)
+    let text: string
+    try {
+      text = await res.text()
+    } catch (err) {
+      throw new GoableNetworkError("Failed to read response body", "parse", err)
+    }
+    if (!res.ok) {
+      let parsed: unknown = text
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        // non-JSON error body — pass the raw text through to toApiError
+      }
+      throw toApiError(res.status, parsed)
+    }
+    return text
   }
 
   private async rawRequest(method: string, path: string, body?: unknown): ReturnType<FetchLike> {
@@ -203,6 +405,18 @@ export class GoableClient {
       if (timer) clearTimeout(timer)
     }
   }
+}
+
+/** Serialise a query object into a leading-`?` string (or "" when empty).
+ *  Skips undefined/null; isomorphic (URLSearchParams is a Node 18+/browser global). */
+function toQuery(params?: Record<string, unknown>): string {
+  if (!params) return ""
+  const usp = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null) usp.append(k, String(v))
+  }
+  const s = usp.toString()
+  return s ? `?${s}` : ""
 }
 
 async function safeJson(res: { text(): Promise<string> }): Promise<unknown> {

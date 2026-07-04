@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest"
 import {
+  DriftActiveError,
   type FetchLike,
   GoableApiError,
   GoableClient,
@@ -142,6 +143,181 @@ describe("request building", () => {
       "/v1/decision",
       "/v1/underwriting/quote",
     ])
+  })
+})
+
+describe("v0.4.0 surface — routing", () => {
+  test("every new method hits its documented path + verb", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: {} }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+
+    await c.scoreDifficulty({ activity: "a", location: { lat: 0, lng: 0 } })
+    await c.reportOutcome("sess-1", { outcome_type: "ran" })
+    await c.edgeCase({ activity: "a", location: { lat: 0, lng: 0 } })
+    await c.projectionsPortfolio({
+      spots: [{ location: { lat: 0, lng: 0 }, activity: "a" }],
+      scenarios: ["SSP2-4.5"],
+    })
+    await c.adaptationReport({
+      spots: [{ location: { lat: 0, lng: 0 }, activity: "a" }],
+      scenarios: ["SSP2-4.5"],
+    })
+    await c.getQuote("q-1")
+    await c.bindPolicy({ quoteId: "q-1", coverageYear: 2027, premiumCollection: "external" })
+    await c.listPolicies()
+    await c.getPolicy("pol-1")
+    await c.evaluatePolicy("pol-1")
+    await c.settlePolicy("pol-1", { settlementReference: "wire-9" })
+    await c.createStation({ name: "n", point: { lat: 0, lng: 0 }, variables: ["wind_speed_kn"] })
+    await c.listStations()
+    await c.updateStation("st-1", { active: false })
+    await c.submitObservations({
+      stationId: "st-1",
+      observations: [{ observedAt: "2026-07-01T00:00:00Z", variable: "wind_speed_kn", value: 12 }],
+    })
+    await c.recentObservations("st-1")
+    await c.sustainabilityIndex({ from: "2026-01-01T00:00:00Z", to: "2026-04-01T00:00:00Z" })
+    await c.publicSignup({ displayName: "Acme", contactEmail: "a@b.co", acceptTerms: true })
+    await c.catalogStats()
+
+    const seen = calls.map((k) => `${k.method} ${k.url.replace("https://x", "")}`)
+    expect(seen).toEqual([
+      "POST /v1/score/difficulty",
+      "POST /v1/score/sess-1/outcome",
+      "POST /v1/intelligence/edge-case",
+      "POST /v1/projections/portfolio",
+      "POST /v1/projections/adaptation-report",
+      "GET /v1/underwriting/quote/q-1",
+      "POST /v1/underwriting/policy/bind",
+      "GET /v1/underwriting/policy",
+      "GET /v1/underwriting/policy/pol-1",
+      "POST /v1/underwriting/policy/pol-1/evaluate",
+      "POST /v1/underwriting/policy/pol-1/settle",
+      "POST /v1/observations/stations",
+      "GET /v1/observations/stations",
+      "PATCH /v1/observations/stations/st-1",
+      "POST /v1/observations",
+      "GET /v1/observations/stations/st-1/recent",
+      "GET /v1/public/sustainability-index?from=2026-01-01T00%3A00%3A00Z&to=2026-04-01T00%3A00%3A00Z",
+      "POST /v1/public/signup",
+      "GET /v1/public/catalog-stats",
+    ])
+  })
+
+  test("evaluatePolicy sends no body (bodyless POST)", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: {} }))
+    await new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" }).evaluatePolicy("pol-1")
+    expect(calls[0]!.method).toBe("POST")
+    expect(calls[0]!.body).toBeUndefined()
+    expect(calls[0]!.headers!["Content-Type"]).toBeUndefined()
+  })
+
+  test("query params are serialised + url-encoded", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: {} }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    await c.listPolicies({ status: "bound", coverageYear: 2027, limit: 10 })
+    await c.recentObservations("st-1", { limit: 5 })
+    expect(calls[0]!.url).toBe("https://x/v1/underwriting/policy?status=bound&coverageYear=2027&limit=10")
+    expect(calls[1]!.url).toBe("https://x/v1/observations/stations/st-1/recent?limit=5")
+  })
+
+  test("201 / 202 responses return the parsed body", async () => {
+    const { fetch } = mockFetch(() => ({ status: 202, body: { accepted: true } }))
+    const res = await new GoableClient({ apiKey: KEY, fetch }).submitObservations({
+      stationId: "st-1",
+      observations: [{ observedAt: "2026-07-01T00:00:00Z", variable: "wind_speed_kn", value: 9 }],
+    })
+    expect(res).toEqual({ accepted: true })
+  })
+})
+
+describe("v0.4.0 surface — NDJSON research exports", () => {
+  test("verificationExport returns the raw NDJSON string, no JSON.parse", async () => {
+    const ndjson = '{"key":"a","brier":0.1}\n{"key":"b","brier":0.2}\n{"_type":"meta"}\n'
+    const { fetch, calls } = mockFetch(() => ({ body: ndjson }))
+    const out = await new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" }).verificationExport({
+      from: "2026-01-01T00:00:00Z",
+    })
+    expect(calls[0]!.method).toBe("GET")
+    expect(calls[0]!.url).toBe("https://x/v1/research/verification/export?from=2026-01-01T00%3A00%3A00Z")
+    expect(typeof out).toBe("string")
+    expect(out).toBe(ndjson)
+  })
+
+  test("difficultyAtlasExport streams from the .jsonl path", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: '{"row":1}\n' }))
+    const out = await new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" }).difficultyAtlasExport()
+    expect(calls[0]!.url).toBe("https://x/v1/research/difficulty-atlas/export.jsonl")
+    expect(out).toBe('{"row":1}\n')
+  })
+
+  test("NDJSON export surfaces API errors as GoableApiError", async () => {
+    const { fetch } = mockFetch(() => ({ ok: false, status: 503, body: { error: "SERVICE_UNAVAILABLE" } }))
+    const err = await new GoableClient({ apiKey: KEY, fetch })
+      .difficultyAtlasExport()
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(GoableApiError)
+    expect(err.code).toBe("SERVICE_UNAVAILABLE")
+  })
+})
+
+describe("bindPolicy drift handling", () => {
+  test("422 DRIFT_ACTIVE → DriftActiveError with openDriftEvents", async () => {
+    const { fetch } = mockFetch(() => ({
+      ok: false,
+      status: 422,
+      body: {
+        error: "DRIFT_ACTIVE",
+        message: "Open drift event on resolved cell",
+        detail: {
+          openDriftEvents: [
+            { activity: "kitesurfing", subSpotSlug: "tarifa-los-lances", severity: "warning" },
+          ],
+        },
+      },
+    }))
+    const err = await new GoableClient({ apiKey: KEY, fetch })
+      .bindPolicy({ quoteId: "q-1", coverageYear: 2027, premiumCollection: "external" })
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(DriftActiveError)
+    expect(err).toBeInstanceOf(GoableApiError)
+    expect(err.name).toBe("DriftActiveError")
+    expect(err.code).toBe("DRIFT_ACTIVE")
+    expect(err.openDriftEvents).toHaveLength(1)
+    expect(err.openDriftEvents[0].subSpotSlug).toBe("tarifa-los-lances")
+  })
+
+  test("non-drift 422 stays a plain GoableApiError", async () => {
+    const { fetch } = mockFetch(() => ({
+      ok: false,
+      status: 422,
+      body: { error: "VALIDATION_ERROR", issues: [{ path: ["quoteId"], message: "Required" }] },
+    }))
+    const err = await new GoableClient({ apiKey: KEY, fetch })
+      .bindPolicy({ quoteId: "", coverageYear: 2027, premiumCollection: "external" })
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(GoableApiError)
+    expect(err).not.toBeInstanceOf(DriftActiveError)
+    expect(err.code).toBe("VALIDATION_ERROR")
+  })
+
+  test("successful bind surfaces driftAdvisories when present", async () => {
+    const { fetch } = mockFetch(() => ({
+      status: 201,
+      body: {
+        policy: { id: "pol-1", status: "bound" },
+        quoteId: "q-1",
+        driftAdvisories: [
+          { spotIndex: 0, activity: "kitesurfing", subSpotSlug: "x", severity: "watch", since: "2026-07-01T00:00:00Z" },
+        ],
+      },
+    }))
+    const res = await new GoableClient({ apiKey: KEY, fetch }).bindPolicy({
+      quoteId: "q-1",
+      coverageYear: 2027,
+      premiumCollection: "external",
+    })
+    expect(res.driftAdvisories?.[0]?.severity).toBe("watch")
   })
 })
 

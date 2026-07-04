@@ -119,6 +119,11 @@ export interface paths {
                         /** @description L2a probabilistic ensemble (Pro+) */
                         ensemble?: boolean;
                         members?: number;
+                        /**
+                         * @description Skill-conditioned scoring (Pro+).
+                         * @enum {string}
+                         */
+                        rider_skill_level?: "beginner" | "intermediate" | "expert";
                     };
                 };
             };
@@ -132,7 +137,7 @@ export interface paths {
                         "application/json": components["schemas"]["ScoreResponse"];
                     };
                 };
-                /** @description Plan upgrade required (ensemble on Free/Starter) */
+                /** @description Plan upgrade required (ensemble or rider_skill_level on Free/Starter) */
                 402: {
                     headers: {
                         [name: string]: unknown;
@@ -297,7 +302,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Historical climatology scoring (Pro+) */
+        /**
+         * Historical climatology scoring (Pro+)
+         * @description Percentiles + exceedance + verdict frequency over ERA5 reanalysis. Each entry carries a historical-mode ConfidenceDetail block (see components.schemas.ConfidenceDetailHistorical).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -328,7 +336,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Percentiles + exceedance + verdict frequency */
+                /** @description Percentiles + exceedance + verdict frequency (per-entry confidenceDetail: historical) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -800,7 +808,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Climate-decadal activity viability projection (Scale) */
+        /**
+         * Climate-decadal activity viability projection (Scale)
+         * @description Per-decade projection distributions. Each entry carries a climate-mode ConfidenceDetail block (see components.schemas.ConfidenceDetailClimate).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -824,7 +835,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Per-decade projection distributions */
+                /** @description Per-decade projection distributions (per-entry confidenceDetail: climate) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -870,7 +881,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Parametric underwriting quote (Scale) */
+        /**
+         * Parametric underwriting quote (Scale)
+         * @description Multi-currency `expectedPremium.byCurrency` — a mixed-currency portfolio returns per-currency stats with no FX conversion. `policy.spot.tier` / `policy.portfolio[i].tier` echo the resolved sub-spot tier (1/2/3) or null when no sub-spot covers the point; `tierSource` marks whether it came from the catalog YAML or L11's data-driven classifier.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -882,43 +896,64 @@ export interface paths {
                 content: {
                     "application/json": {
                         spot?: {
-                            location: components["schemas"]["GeoPoint"];
+                            point: components["schemas"]["GeoPoint"];
                             activity: string;
                             spotId?: string;
+                            payout: {
+                                amount: number;
+                                /** @enum {string} */
+                                currency: "EUR" | "USD" | "GBP" | "CHF";
+                            };
                         };
                         portfolio?: {
-                            location: components["schemas"]["GeoPoint"];
+                            point: components["schemas"]["GeoPoint"];
                             activity: string;
                             spotId?: string;
+                            payout: {
+                                amount: number;
+                                /** @enum {string} */
+                                currency: "EUR" | "USD" | "GBP" | "CHF";
+                            };
                         }[];
                         coverageWindow: {
                             monthFrom: number;
                             dayFrom: number;
                             monthTo: number;
                             dayTo: number;
-                        } & {
-                            [key: string]: unknown;
                         };
-                        payout?: {
-                            amount: number;
+                        trigger: {
                             /** @enum {string} */
-                            currency: "EUR" | "USD" | "GBP" | "CHF";
+                            kind: "scoreBelow";
+                            scoreBelow: number;
+                            consecutiveHours?: number;
+                            cooldownHours?: number;
+                            maxPayoutsPerYear?: number;
+                        } | {
+                            /** @enum {string} */
+                            kind: "verdictAtOrBelow";
+                            verdict: components["schemas"]["Verdict"];
+                            consecutiveHours?: number;
+                            cooldownHours?: number;
+                            maxPayoutsPerYear?: number;
                         };
-                    } & {
-                        [key: string]: unknown;
+                        historicalYearsRange?: {
+                            from: number;
+                            to: number;
+                        };
+                        loadingFactor?: number;
+                        calibrationConfidenceMin?: number;
+                        forceIssue?: boolean;
                     };
                 };
             };
             responses: {
-                /** @description Premium + bindable policy terms */
+                /** @description Premium + policy echo (with per-spot tier + tierSource) + bindable quote id when policy store is wired */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            [key: string]: unknown;
-                        };
+                        "application/json": components["schemas"]["UnderwritingQuoteResponse"];
                     };
                 };
                 /** @description Requires Scale plan */
@@ -930,8 +965,26 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
+                /** @description No profile for activity */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error / low confidence / invalid trigger */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description HistoricalProvider not configured */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -947,7 +1000,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/underwriting/bind": {
+    "/v1/underwriting/quote/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch a bindable quote by id (Scale)
+         * @description Tenant-scoped read of a quote created via POST /v1/underwriting/quote. Returns the same body shape as the create response (with the optional `boundPolicyId` populated once the quote has been bound).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Quote record (may include boundPolicyId when already bound) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UnderwritingQuoteResponse"];
+                    };
+                };
+                /** @description Requires Scale plan */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Quote not found for this tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Quote persistence not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/underwriting/policy/bind": {
         parameters: {
             query?: never;
             header?: never;
@@ -958,7 +1079,7 @@ export interface paths {
         put?: never;
         /**
          * Bind a parametric policy (Scale)
-         * @description Convert a recent /v1/underwriting/quote into a bound policy. Submit the quoteId (≤24h old); returns a policyId + immutable cohortHash anchoring the bound weather sample set.
+         * @description Convert a bindable quote (≤24h old) into a bound policy for a specific coverage year. Returns the serialised policy + the quoteId + optional `driftAdvisories` — a soft warning surfaced when the resolved cell has an open watch-level L9 drift event. A warning/critical drift event at bind time REFUSES the bind with 422 DRIFT_ACTIVE (see the 422 response). Fires the `underwriting.policy.bound` webhook on success.
          */
         post: {
             parameters: {
@@ -970,24 +1091,36 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         quoteId: string;
-                        premiumConfirmation?: {
-                            [key: string]: unknown;
-                        };
-                    } & {
-                        [key: string]: unknown;
+                        coverageYear: number;
+                        /** @enum {string} */
+                        premiumCollection: "external" | "stripe" | "invoice_due";
+                        premiumPaid?: number;
                     };
                 };
             };
             responses: {
-                /** @description Bound policy id + cohort hash + settlement schedule */
-                200: {
+                /** @description Policy bound */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            [key: string]: unknown;
+                            policy: components["schemas"]["SerialisedPolicy"];
+                            /** Format: uuid */
+                            quoteId: string;
+                            /** @description Soft warnings for cells with an open watch-level L9 drift event. Present only when non-empty. */
+                            driftAdvisories?: {
+                                spotIndex: number;
+                                activity: string;
+                                subSpotSlug: string;
+                                /** @enum {string} */
+                                severity: "watch";
+                                /** Format: date-time */
+                                since: string;
+                            }[];
                         };
                     };
                 };
@@ -1000,8 +1133,88 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Quote expired or not found */
+                /** @description Quote not found for this tenant */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Quote already bound to another policy */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error / quote expired / quote not issuable / catalog drift / DRIFT_ACTIVE (open warning or critical drift event on resolved cell — `detail.openDriftEvents` lists each blocking cell) */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Policy persistence not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/underwriting/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List bound policies for the caller's tenant (Scale)
+         * @description Paginated list of every bound policy owned by the calling tenant. Ordered by boundAt DESC.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "bound" | "triggered" | "settled" | "expired";
+                    coverageYear?: number;
+                    limit?: number;
+                    cursor?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Bound policies for this tenant */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policies: components["schemas"]["SerialisedPolicy"][];
+                        };
+                    };
+                };
+                /** @description Requires Scale plan */
+                402: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1018,50 +1231,56 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Policy persistence not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/underwriting/evaluate": {
+    "/v1/underwriting/policy/{policyId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Read-only payout projection for a bound policy (Scale)
-         * @description Returns the current accrued shortfall + projected payout for a bound policy. Does NOT settle — settlement runs automatically on a cron at policy expiry.
+         * Fetch a single policy by id (Scale)
+         * @description Read-only lookup. Cross-tenant policies return 404.
          */
-        post: {
+        get: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    policyId: string;
+                };
                 cookie?: never;
             };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        policyId: string;
-                    };
-                };
-            };
+            requestBody?: never;
             responses: {
-                /** @description Accrued shortfall + projected payout per currency */
+                /** @description Policy record + payout events */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            [key: string]: unknown;
+                            policy: components["schemas"]["SerialisedPolicy"];
+                            events: components["schemas"]["SerialisedPayoutEvent"][];
                         };
                     };
                 };
@@ -1083,8 +1302,188 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
+                /** @description Policy persistence not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/underwriting/policy/{policyId}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-evaluate a bound policy against historical replay (Scale)
+         * @description Runs the trigger walk against the historical archive for the policy's coverage year and inserts any newly detected payout events. No request body. Fires the `underwriting.policy.triggered` webhook the first time new events are inserted.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    policyId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Policy + payout events + counts of newly inserted / skipped */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policy: components["schemas"]["SerialisedPolicy"];
+                            events: components["schemas"]["SerialisedPayoutEvent"][];
+                            inserted: number;
+                            skipped: number;
+                        };
+                    };
+                };
+                /** @description Requires Scale plan */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Policy not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Policy in a terminal state (settled / expired) */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Policy persistence or HistoricalProvider not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/underwriting/policy/{policyId}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle a bound policy (platform-ops only)
+         * @description PLATFORM-OPS ONLY — requires the `platform_admin` scope (cross-tenant Goable/underwriter operation, not a policyholder self-service action). Records the settlement wire reference + freezes the payout, and fires the `underwriting.policy.settled` webhook. Normally invoked by the daily settlement cron; use manually only for out-of-band settlement.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    policyId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        settlementReference: string;
+                        /** Format: date-time */
+                        settledAt?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Settled policy */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policy: components["schemas"]["SerialisedPolicy"];
+                        };
+                    };
+                };
+                /** @description Requires Scale plan */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing scope: platform_admin */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Policy not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error or policy not in a settleable state */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Policy persistence not configured */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1191,8 +1590,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Skill-conditioned scoring
-         * @description Same scoring engine, but conditioned on a rider/operator skill level. Returns the score curve as a function of skill so a booking flow can branch ("good for beginners" vs "experts only").
+         * L15 intrinsic-difficulty atlas lookup (Pro+)
+         * @description Returns the per-dimension intrinsic difficulty curve δ(x) for the sub-spot the (activity, location) resolves to. Pure atlas read — no scoring, no weather fetch. 404 NO_DIFFICULTY_ATLAS when the sub-spot resolves but no atlas row exists yet (dormant cell — communicated honestly rather than synthesised).
          */
         post: {
             parameters: {
@@ -1206,25 +1605,46 @@ export interface paths {
                     "application/json": {
                         activity: string;
                         location: components["schemas"]["GeoPoint"];
-                        window?: components["schemas"]["TimeWindow"];
-                        /** @description Skill points (0-1) to score. Defaults to 5 quantile points. */
-                        riderSkillLevels?: number[];
                     };
                 };
             };
             responses: {
-                /** @description Score per skill level + difficulty band */
+                /** @description Per-dimension intrinsic difficulty curves for the resolved sub-spot */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            [key: string]: unknown;
+                            resolved: {
+                                /** @enum {string} */
+                                level: "sub-spot" | "cluster" | "region" | "base";
+                                slug: string;
+                                sub_spot_slug?: string;
+                                distance_to_sub_spot_m?: number;
+                            };
+                            dimensions: {
+                                dimension: string;
+                                grid: number[];
+                                difficulty: number[];
+                                discrimination_a: number;
+                                cohort_hash: string;
+                                /** Format: date-time */
+                                computed_at: string;
+                            }[];
                         };
                     };
                 };
-                /** @description No profile for activity */
+                /** @description Requires Pro+ plan */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No profile for activity, or no atlas row for the resolved sub-spot */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1235,6 +1655,15 @@ export interface paths {
                 };
                 /** @description Validation error */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Difficulty atlas reader not wired */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1602,7 +2031,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Submit station observation for data assimilation (Pro+)
+         * Submit station observations for data assimilation (Pro+)
          * @description Push tenant-station observations (wind / wave / temperature / etc.) into the 0-6h assimilation window. The optimal-interpolation blending pulls them into forecast samples for nearby spots, improving short-horizon skill.
          */
         post: {
@@ -1617,14 +2046,15 @@ export interface paths {
                     "application/json": {
                         /** Format: uuid */
                         stationId: string;
-                        /** Format: date-time */
-                        observedAt: string;
-                        values: {
-                            [key: string]: number;
-                        };
-                        qualityFlags?: {
-                            [key: string]: unknown;
-                        };
+                        observations: {
+                            /** Format: date-time */
+                            observedAt: string;
+                            /** @enum {string} */
+                            variable: "wind_speed_kn" | "wind_dir_deg" | "wave_height_m" | "temp_c" | "sea_surface_temp_c" | "pressure_hpa" | "precip_mm";
+                            value: number;
+                            /** @enum {string} */
+                            qualityFlag?: "verified" | "unflagged" | "flagged_low_quality";
+                        }[];
                     };
                 };
             };
@@ -1658,8 +2088,26 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
+                /** @description Station inactive */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error / observation in future / variable mismatch */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Observation store not wired */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1703,10 +2151,19 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Station registry not wired */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         put?: never;
-        /** Register a tenant observation station (Pro+) */
+        /** Register a tenant observation station */
         post: {
             parameters: {
                 query?: never;
@@ -1718,13 +2175,13 @@ export interface paths {
                 content: {
                     "application/json": {
                         name: string;
-                        location: components["schemas"]["GeoPoint"];
-                        elevationM?: number;
-                        metadata?: {
-                            [key: string]: unknown;
-                        };
-                    } & {
-                        [key: string]: unknown;
+                        point: components["schemas"]["GeoPoint"];
+                        altitudeM?: number;
+                        variables: ("wind_speed_kn" | "wind_dir_deg" | "wave_height_m" | "temp_c" | "sea_surface_temp_c" | "pressure_hpa" | "precip_mm")[];
+                        /** @enum {string} */
+                        stationClass?: "verified" | "unflagged" | "flagged_low_quality";
+                        updateCadenceMinutes?: number;
+                        notes?: string;
                     };
                 };
             };
@@ -1740,8 +2197,8 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Requires Pro+ plan */
-                402: {
+                /** @description Validation error */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1749,8 +2206,8 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
-                422: {
+                /** @description Station registry not wired */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1779,7 +2236,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a station (Pro+) */
+        /** Update a station */
         patch: {
             parameters: {
                 query?: never;
@@ -1793,13 +2250,14 @@ export interface paths {
                 content: {
                     "application/json": {
                         name?: string;
-                        location?: components["schemas"]["GeoPoint"];
-                        elevationM?: number;
-                        metadata?: {
-                            [key: string]: unknown;
-                        };
-                    } & {
-                        [key: string]: unknown;
+                        point?: components["schemas"]["GeoPoint"];
+                        altitudeM?: number;
+                        variables?: ("wind_speed_kn" | "wind_dir_deg" | "wave_height_m" | "temp_c" | "sea_surface_temp_c" | "pressure_hpa" | "precip_mm")[];
+                        /** @enum {string} */
+                        stationClass?: "verified" | "unflagged" | "flagged_low_quality";
+                        updateCadenceMinutes?: number;
+                        active?: boolean;
+                        notes?: string;
                     };
                 };
             };
@@ -1815,13 +2273,84 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Requires Pro+ plan */
-                402: {
+                /** @description Station not found */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Station registry not wired */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/observations/stations/{stationId}/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent observations for a tenant station
+         * @description Returns up to `limit` most-recent observations submitted for the station (tenant-scoped). Useful for the tenant's own dashboard / debugging feed. Requires the `score:read` scope.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    stationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Most-recent observations for this station (descending by observedAt) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            observations: {
+                                /** Format: uuid */
+                                id: string;
+                                /** Format: uuid */
+                                stationId: string;
+                                /** Format: date-time */
+                                observedAt: string;
+                                /** @enum {string} */
+                                variable: "wind_speed_kn" | "wind_dir_deg" | "wave_height_m" | "temp_c" | "sea_surface_temp_c" | "pressure_hpa" | "precip_mm";
+                                value: number;
+                                /** @enum {string|null} */
+                                qualityFlag?: "verified" | "unflagged" | "flagged_low_quality" | null;
+                                /** Format: date-time */
+                                ingestedAt: string;
+                            }[];
+                        };
                     };
                 };
                 /** @description Station not found */
@@ -1833,8 +2362,23 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Observation store not wired */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/public/signup": {
@@ -1904,6 +2448,226 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/sustainability-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Goable Sustainability Index (no auth, JSON-LD)
+         * @description Public JSON-LD artefact of the Goable Sustainability Index (CC BY 4.0). Session-weighted 0-100 index across zones plus per-zone breakdowns. Governed by k-anonymity (default k≥10) + a 90-day publication lag in the underlying reader — no additional privacy work required for the public surface. Content-Type: application/ld+json. Edge-cached for 5 minutes.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Inclusive start of the reporting period. */
+                    from: string;
+                    /** @description Exclusive end of the reporting period. */
+                    to: string;
+                    /** @description Zone grid cell edge length in km (default: reader-configured). */
+                    zoneKm?: number;
+                    /** @description k-anonymity threshold: zones with fewer than k sessions are suppressed. */
+                    k?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Sustainability Index document (JSON-LD) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/ld+json": {
+                            /** @example https://schema.org */
+                            "@context": string;
+                            /** @enum {string} */
+                            "@type": "GoableSustainabilityIndex";
+                            /** Format: date-time */
+                            generatedAt: string;
+                            period: {
+                                /** Format: date-time */
+                                from: string;
+                                /** Format: date-time */
+                                to: string;
+                            };
+                            methodology: {
+                                indexFormula: string;
+                                weights: {
+                                    carbonNeutralShare: number;
+                                    electrificationShare: number;
+                                };
+                                suppression: string;
+                                notes: string;
+                            };
+                            overall: {
+                                index: number;
+                                totalSessions: number;
+                                carbonNeutralSessions: number;
+                                carbonPositiveSessions: number;
+                                carbonNeutralShare: number;
+                                zonesReleased: number;
+                                zonesSuppressed: number;
+                            };
+                            zones: {
+                                zoneKey: string;
+                                label: string | null;
+                                centroid: components["schemas"]["GeoPoint"] | null;
+                                totalSessions: number;
+                                carbonNeutralShare: number;
+                                electrificationShare: number | null;
+                                seasonalConcentration: number | null;
+                                zoneIndex: number;
+                            }[];
+                            /** @enum {string} */
+                            license: "CC BY 4.0";
+                            attribution: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description Validation error */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Sustainability index reader not wired */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/research/verification/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Stream F forecast verification export (no auth, JSONL)
+         * @description Streamed newline-delimited JSON (`application/x-ndjson`) — one anonymised (activity × 1km² grid × weekly bucket) skill cell per line, followed by a trailing metadata line. CC BY 4.0. Governance: k≥10 contributor floor + 90-day publication lag + `research_eligible=true` filter enforced in the SQL reader.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    from?: string;
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Streamed JSONL — one cell per line + trailing meta line */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/x-ndjson": string;
+                    };
+                };
+                /** @description Validation error */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Verification reader not wired */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/research/difficulty-atlas/export.jsonl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public L15 Difficulty Atlas export (no auth, JSONL)
+         * @description Streamed newline-delimited JSON (`application/x-ndjson`) — one anonymised (activity × sub-spot × dimension) difficulty row per line, followed by a trailing metadata line. CC BY 4.0. First openly-available intrinsic-difficulty measurement for outdoor activities. Governance mirrors Stream F: k≥10 contributors + 90-day publication lag.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Streamed JSONL — one atlas row per line + trailing meta line */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/x-ndjson": string;
+                    };
+                };
+                /** @description Difficulty atlas reader not wired */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2049,12 +2813,8 @@ export interface components {
             distribution?: {
                 [key: string]: unknown;
             };
-            confidenceDetail?: {
-                [key: string]: unknown;
-            };
-            calibration_provenance?: {
-                [key: string]: unknown;
-            };
+            confidenceDetail?: components["schemas"]["ConfidenceDetailForecast"];
+            calibration_provenance?: components["schemas"]["CalibrationProvenance"] | null;
             assimilation?: {
                 [key: string]: unknown;
             };
@@ -2084,6 +2844,297 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        CalibrationProvenance: {
+            /** @enum {string} */
+            level?: "sub-spot" | "cluster" | "region" | "base";
+            slug?: string;
+            scoring_profile_slug?: string;
+            sub_spot_slug?: string;
+            distance_to_sub_spot_m?: number;
+            /** @enum {integer} */
+            tier?: 1 | 2 | 3;
+            /** @enum {string} */
+            tier_source?: "catalog" | "classifier";
+        };
+        CalibrationProvenanceSummary: {
+            /** @enum {string} */
+            level: "base" | "region" | "cluster" | "sub-spot";
+            n_local: number | null;
+            shrinkage_weight_from_parent: number | null;
+        };
+        DriftFlag: {
+            /** @enum {string} */
+            severity: "watch" | "warning" | "critical";
+            /** Format: date-time */
+            since_timestamp: string;
+        };
+        ConfidenceDetail: components["schemas"]["ConfidenceDetailForecast"] | components["schemas"]["ConfidenceDetailHistorical"] | components["schemas"]["ConfidenceDetailClimate"];
+        ConfidenceDetailForecast: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "forecast";
+            forecast_skill: number;
+            provider_agreement: number;
+            profile_maturity: number;
+            hierarchical_calibration: number;
+            calibration_provenance?: components["schemas"]["CalibrationProvenanceSummary"];
+            skill_calibration?: {
+                applied: boolean;
+                n_train: number;
+                cohort_hash: string;
+                scalar: number;
+            };
+            drift_flag?: components["schemas"]["DriftFlag"];
+        } & {
+            [key: string]: unknown;
+        };
+        ConfidenceDetailHistorical: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "historical";
+            sample_size_confidence: number;
+            base_climatology_quality: number;
+            calibration_confidence: number;
+            hierarchical_calibration: number;
+            calibration_provenance?: components["schemas"]["CalibrationProvenanceSummary"];
+            drift_flag?: components["schemas"]["DriftFlag"];
+        } & {
+            [key: string]: unknown;
+        };
+        ConfidenceDetailClimate: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "climate";
+            model_spread: number;
+            bias_correction_residual: number;
+            scenario_uncertainty: number;
+            horizon_uncertainty: number;
+            hierarchical_calibration: number;
+            calibration_provenance?: components["schemas"]["CalibrationProvenanceSummary"];
+            drift_flag?: components["schemas"]["DriftFlag"];
+        } & {
+            [key: string]: unknown;
+        };
+        SerialisedPolicy: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            quoteId: string;
+            /** @enum {string} */
+            status: "bound" | "triggered" | "settled" | "expired";
+            /** @description Null for mixed-currency portfolios; the breakdown lives on the underlying quote. */
+            payoutAmount?: number | null;
+            payoutCurrency?: ("EUR" | "USD" | "GBP" | "CHF") | null;
+            premiumPaid?: number | null;
+            /** @enum {string} */
+            premiumCollection: "external" | "stripe" | "invoice_due";
+            coverageWindow: {
+                monthFrom: number;
+                dayFrom: number;
+                monthTo: number;
+                dayTo: number;
+            };
+            coverageYear: number;
+            /** @description Frozen at bind time — same shape as the quote's normalised trigger. */
+            trigger: {
+                [key: string]: unknown;
+            };
+            /** @description Frozen snapshot of the per-spot profile + payout terms — decouples the policy from later catalog changes. */
+            policyTerms: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            boundAt: string;
+            /** Format: date-time */
+            triggeredAt: string | null;
+            /** Format: date-time */
+            settledAt: string | null;
+            /** Format: date-time */
+            expiredAt: string | null;
+            settlementReference: string | null;
+        };
+        SerialisedPayoutEvent: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            policyId: string;
+            spotIndex: number;
+            /** Format: date-time */
+            eventStartAt: string;
+            /** Format: date-time */
+            eventEndAt: string;
+            hoursFired: number;
+            payoutAmount: number;
+            /** @enum {string} */
+            payoutCurrency: "EUR" | "USD" | "GBP" | "CHF";
+            /** Format: date-time */
+            detectedAt: string;
+            /** @enum {string} */
+            evaluationSource: "manual" | "scheduled";
+        };
+        UnderwritingQuoteResponse: {
+            policy: {
+                coverageWindow: {
+                    monthFrom: number;
+                    dayFrom: number;
+                    monthTo: number;
+                    dayTo: number;
+                };
+                /** @description Normalised trigger echoed back with defaulted consecutiveHours/cooldownHours. */
+                trigger: {
+                    [key: string]: unknown;
+                };
+                historicalYearsRange: {
+                    from: number;
+                    to: number;
+                };
+                spot?: {
+                    resolvedProfileSlug: string;
+                    point: components["schemas"]["GeoPoint"];
+                    spotId?: string;
+                    payout: {
+                        amount: number;
+                        /** @enum {string} */
+                        currency: "EUR" | "USD" | "GBP" | "CHF";
+                    };
+                    /**
+                     * @description Sub-spot tier (1/2/3) applied to the tier risk multiplier; null when no sub-spot resolved.
+                     * @enum {integer|null}
+                     */
+                    tier?: 1 | 2 | 3 | null;
+                    /**
+                     * @description Provenance of the tier: 'catalog' from profile YAML, 'classifier' from L11 confidence=1.0 override, null when no tier applied.
+                     * @enum {string|null}
+                     */
+                    tierSource?: "catalog" | "classifier" | null;
+                };
+                portfolio?: {
+                    resolvedProfileSlug: string;
+                    point: components["schemas"]["GeoPoint"];
+                    spotId?: string;
+                    payout: {
+                        amount: number;
+                        /** @enum {string} */
+                        currency: "EUR" | "USD" | "GBP" | "CHF";
+                    };
+                    /**
+                     * @description Sub-spot tier (1/2/3) applied to the tier risk multiplier; null when no sub-spot resolved.
+                     * @enum {integer|null}
+                     */
+                    tier?: 1 | 2 | 3 | null;
+                    /**
+                     * @description Provenance of the tier: 'catalog' from profile YAML, 'classifier' from L11 confidence=1.0 override, null when no tier applied.
+                     * @enum {string|null}
+                     */
+                    tierSource?: "catalog" | "classifier" | null;
+                }[];
+            } & {
+                [key: string]: unknown;
+            };
+            expectedPayouts: {
+                byCurrency: {
+                    EUR?: {
+                        mean: number;
+                        p10: number;
+                        p50: number;
+                        p90: number;
+                        perYear: number[];
+                        varianceStability: number;
+                    };
+                    USD?: {
+                        mean: number;
+                        p10: number;
+                        p50: number;
+                        p90: number;
+                        perYear: number[];
+                        varianceStability: number;
+                    };
+                    GBP?: {
+                        mean: number;
+                        p10: number;
+                        p50: number;
+                        p90: number;
+                        perYear: number[];
+                        varianceStability: number;
+                    };
+                    CHF?: {
+                        mean: number;
+                        p10: number;
+                        p50: number;
+                        p90: number;
+                        perYear: number[];
+                        varianceStability: number;
+                    };
+                };
+            };
+            expectedPremium: {
+                byCurrency: {
+                    EUR?: {
+                        fair: number;
+                        loaded: number;
+                        /** @description Weighted-average tier risk multiplier applied across spots in this currency (1.0 when no sub-spot). */
+                        tierMultiplierWeightedAvg: number;
+                    };
+                    USD?: {
+                        fair: number;
+                        loaded: number;
+                        /** @description Weighted-average tier risk multiplier applied across spots in this currency (1.0 when no sub-spot). */
+                        tierMultiplierWeightedAvg: number;
+                    };
+                    GBP?: {
+                        fair: number;
+                        loaded: number;
+                        /** @description Weighted-average tier risk multiplier applied across spots in this currency (1.0 when no sub-spot). */
+                        tierMultiplierWeightedAvg: number;
+                    };
+                    CHF?: {
+                        fair: number;
+                        loaded: number;
+                        /** @description Weighted-average tier risk multiplier applied across spots in this currency (1.0 when no sub-spot). */
+                        tierMultiplierWeightedAvg: number;
+                    };
+                };
+                loadingFactor: number;
+            };
+            modelConfidence: number;
+            /** @enum {string} */
+            advisoryLevel: "high_confidence" | "moderate_confidence" | "low_confidence";
+            issuable: boolean;
+            notes: string[];
+            /** @description HistoricalScoreDistribution — object for single spot, array for portfolio. */
+            underlying: {
+                [key: string]: unknown;
+            } | {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Format: uuid
+             * @description Present when the policy store is wired — pass to /v1/underwriting/policy/bind to bind this quote.
+             */
+            quoteId?: string;
+            /**
+             * Format: date-time
+             * @description ISO timestamp after which the quote can no longer be bound.
+             */
+            expiresAt?: string;
+            /**
+             * Format: uuid
+             * @description Present on GET after the quote has been bound — the resulting policy id.
+             */
+            boundPolicyId?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @enum {string} */
+        WebhookEvent: "outcome.created" | "drift.fired" | "drift.resolved" | "calibration.completed" | "billing.subscription_updated" | "recommendation.completed" | "underwriting.policy.bound" | "underwriting.policy.triggered" | "underwriting.policy.settled";
     };
     responses: never;
     parameters: never;

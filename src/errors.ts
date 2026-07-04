@@ -15,7 +15,9 @@ export interface ZodIssueLike {
 }
 
 export class GoableApiError extends Error {
-  override readonly name = "GoableApiError"
+  // Typed `string` (not the literal) so subclasses like DriftActiveError can
+  // override it with their own name.
+  override readonly name: string = "GoableApiError"
   /** HTTP status code. */
   readonly status: number
   /** Machine-readable code from the `error` field (e.g. "PAYMENT_REQUIRED"). */
@@ -38,6 +40,32 @@ export class GoableApiError extends Error {
     if (extra?.detail) this.detail = extra.detail
     // Restore prototype chain for `instanceof` across transpilation targets.
     Object.setPrototypeOf(this, GoableApiError.prototype)
+  }
+}
+
+/**
+ * Raised on a `422 DRIFT_ACTIVE` from `POST /v1/underwriting/policy/bind`:
+ * the resolved cell has an open warning/critical L9 drift event, so the bind
+ * is refused (a watch-level event is a soft `driftAdvisories` on success, not
+ * an error). Subclasses `GoableApiError`, so existing `instanceof
+ * GoableApiError` / `.code === "DRIFT_ACTIVE"` checks keep working.
+ */
+export class DriftActiveError extends GoableApiError {
+  override readonly name = "DriftActiveError"
+  /** The blocking cells, from the server's `detail.openDriftEvents`. Shape is
+   *  per-cell and best-effort (documented, not part of the typed contract). */
+  readonly openDriftEvents: Array<Record<string, unknown>>
+
+  constructor(
+    status: number,
+    code: string,
+    message?: string,
+    extra?: { issues?: ZodIssueLike[]; detail?: Record<string, unknown> },
+  ) {
+    super(status, code, message, extra)
+    const raw = extra?.detail?.openDriftEvents
+    this.openDriftEvents = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : []
+    Object.setPrototypeOf(this, DriftActiveError.prototype)
   }
 }
 
@@ -71,5 +99,8 @@ export function toApiError(status: number, body: unknown): GoableApiError {
   const extra: { issues?: ZodIssueLike[]; detail?: Record<string, unknown> } = {}
   if (Array.isArray(b.issues)) extra.issues = b.issues as ZodIssueLike[]
   if (b.detail && typeof b.detail === "object") extra.detail = b.detail as Record<string, unknown>
+  // Specialise the one error the SDK models with its own class. Stays a
+  // GoableApiError subclass, so generic catch sites are unaffected.
+  if (code === "DRIFT_ACTIVE") return new DriftActiveError(status, code, message, extra)
   return new GoableApiError(status, code, message, extra)
 }
