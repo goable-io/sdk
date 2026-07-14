@@ -3,6 +3,17 @@ name: Release
 on:
   push:
     branches: [main]
+    # Only cut a release when something that affects the PUBLISHED package
+    # actually changes. The tarball ships `dist` (built from `src`), so releases
+    # are scoped to source + the package manifest + build config. Merges that
+    # touch ONLY workflows, `openapi.json` (formatting — the generated types live
+    # under `src` and are covered above), tests, or docs (README/CHANGELOG/
+    # CONTRIBUTING) no longer trigger a spurious patch publish. To force a
+    # release without a code change, bump the version in `package.json`.
+    paths:
+      - "src/**"
+      - "package.json"
+      - "tsconfig.json"
 
 # Provenance requires id-token: write; tagging/release requires contents: write.
 permissions:

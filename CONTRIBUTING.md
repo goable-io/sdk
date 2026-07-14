@@ -46,20 +46,30 @@ Two mechanisms keep the snapshot current:
 1. **Automated (preferred).** The
    [`refresh-openapi`](.github/workflows/refresh-openapi.yml) workflow runs on a
    daily schedule (and on-demand via *Actions → Refresh OpenAPI → Run
-   workflow*). It fetches the live contract, runs `pnpm gen`, and — if anything
-   changed — opens a pull request titled `chore: sync OpenAPI from live API`. A
-   maintainer reviews the diff and merges; the merge triggers a release.
+   workflow*). It fetches the live contract, normalises it
+   (`node scripts/normalizeSpec.mjs openapi.json`), runs `pnpm gen`, and — if
+   anything changed — opens a pull request titled
+   `chore: sync OpenAPI from live API`. A maintainer reviews the diff and merges;
+   the merge triggers a release.
 
 2. **Manual.** If you need to sync immediately:
 
    ```bash
-   curl -sSf https://api.goable.io/docs/openapi.json \
-     | python3 -m json.tool > openapi.json      # pretty-print, 2-space indent
+   curl -sSf https://api.goable.io/docs/openapi.json -o openapi.json
+   node scripts/normalizeSpec.mjs openapi.json   # pin info.version, canonical formatting
    pnpm gen
    pnpm test
    ```
 
    Open a PR with both `openapi.json` and the regenerated `src/generated/api.ts`.
+
+> **Why normalise?** The live `/docs/openapi.json` reports the deployment's real
+> `info.version` (e.g. `1.0.0`) and expands JSON arrays differently from our
+> committed snapshot — neither is a contract change. `scripts/normalizeSpec.mjs`
+> pins `info.version` to `0.0.0` and re-serialises
+> canonically, and the committed `openapi.json` is kept in that form (guarded by
+> `test/specNormalized.test.ts`). Running the identical normaliser on both sides
+> means the daily drift check only opens a PR when the contract *actually* moves.
 
 > **Why not generate straight from the API?** Because this repo is public and the
 > API's contract builder is not. Fetching the already-public live spec keeps the

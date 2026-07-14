@@ -31,11 +31,14 @@ jobs:
       - name: Fetch live contract + regenerate
         run: |
           set -euo pipefail
-          # Fetch and normalise to the committed formatting (2-space indent,
-          # trailing newline, same key order) so diffs stay minimal and stable.
-          curl -sSf "$SPEC_URL" -o openapi.raw.json
-          node -e "const fs=require('fs');const s=fs.readFileSync('openapi.raw.json','utf8');fs.writeFileSync('openapi.json', JSON.stringify(JSON.parse(s), null, 2) + '\n');"
-          rm -f openapi.raw.json
+          # Fetch the live contract, then run it through the SAME normaliser the
+          # committed snapshot uses (scripts/normalizeSpec.mjs: pins info.version,
+          # stable 2-space formatting + trailing newline). This is what makes the
+          # drift check below fire only on a REAL contract change — the live route
+          # reports the deployment's version string ("1.0.0") and expands JSON
+          # arrays differently, neither of which is a contract change.
+          curl -sSf "$SPEC_URL" -o openapi.json
+          node scripts/normalizeSpec.mjs openapi.json
           pnpm gen
 
       - name: Verify freshness guard still passes
