@@ -7,6 +7,8 @@ import { GoableNetworkError, toApiError } from "./errors.ts"
 import type {
   AdaptationReportRequest,
   AdaptationReportResponse,
+  AuditExportQuery,
+  AuditExportResponse,
   BindPolicyRequest,
   BindPolicyResponse,
   BriefingRequest,
@@ -24,10 +26,15 @@ import type {
   EvaluatePolicyResponse,
   ExplainRequest,
   ExplainResponse,
+  HealthReadyResponse,
   HealthResponse,
+  IdempotencyOptions,
+  LegalDocumentKind,
+  LegalDocumentResponse,
   ListPoliciesQuery,
   ListPoliciesResponse,
   ListStationsResponse,
+  LlmKeyStatus,
   PolicyResponse,
   ProjectionsPortfolioRequest,
   ProjectionsPortfolioResponse,
@@ -56,10 +63,13 @@ import type {
   ScoreResponse,
   ScoreSeriesRequest,
   ScoreSeriesResponse,
+  SetLlmKeyRequest,
   SettlePolicyRequest,
   SettlePolicyResponse,
   SubmitObservationsRequest,
   SubmitObservationsResponse,
+  SubmitOutcomeRequest,
+  SubmitOutcomeResponse,
   SustainabilityIndexQuery,
   SustainabilityIndexResponse,
   UpdateStationRequest,
@@ -117,6 +127,12 @@ export class GoableClient {
   // ── public methods ──────────────────────────────────────────────────────
   health(): Promise<HealthResponse> {
     return this.request<HealthResponse>("GET", "/v1/health")
+  }
+
+  /** Readiness probe (DB + skill lookup + LLM config). Note: a degraded/critical
+   *  deployment answers `503`, which surfaces here as a {@link GoableApiError}. */
+  healthReady(): Promise<HealthReadyResponse> {
+    return this.request<HealthReadyResponse>("GET", "/v1/health/ready")
   }
 
   score(input: ScoreRequest): Promise<ScoreResponse> {
@@ -181,13 +197,27 @@ export class GoableClient {
   }
 
   /** Close the calibration loop: report the observed outcome of a scored
-   *  session. Requires the `outcomes:write` scope. */
-  reportOutcome(sessionId: string, input: ReportOutcomeRequest): Promise<ReportOutcomeResponse> {
+   *  session. Requires the `outcomes:write` scope. Pass `idempotencyKey` so a
+   *  retry after a network timeout can't record the same outcome twice. */
+  reportOutcome(
+    sessionId: string,
+    input: ReportOutcomeRequest,
+    options?: IdempotencyOptions,
+  ): Promise<ReportOutcomeResponse> {
     return this.request<ReportOutcomeResponse>(
       "POST",
       `/v1/score/${encodeURIComponent(sessionId)}/outcome`,
       input,
+      idempotencyHeader(options),
     )
+  }
+
+  /** Report a standalone activity outcome not tied to a scored session — the
+   *  operator-reported behavioural signal behind the calibration + research
+   *  datasets. Responds 202. Requires the `outcomes:write` scope. For an
+   *  outcome linked to a specific score, use {@link reportOutcome} instead. */
+  submitOutcome(input: SubmitOutcomeRequest): Promise<SubmitOutcomeResponse> {
+    return this.request<SubmitOutcomeResponse>("POST", "/v1/outcomes", input)
   }
 
   /** LLM edge-case narrative for a marginal score. */
@@ -217,8 +247,13 @@ export class GoableClient {
    * warning/critical event refuses the bind with `422 DRIFT_ACTIVE`, thrown as
    * a {@link DriftActiveError}.
    */
-  bindPolicy(input: BindPolicyRequest): Promise<BindPolicyResponse> {
-    return this.request<BindPolicyResponse>("POST", "/v1/underwriting/policy/bind", input)
+  bindPolicy(input: BindPolicyRequest, options?: IdempotencyOptions): Promise<BindPolicyResponse> {
+    return this.request<BindPolicyResponse>(
+      "POST",
+      "/v1/underwriting/policy/bind",
+      input,
+      idempotencyHeader(options),
+    )
   }
 
   /** List the calling tenant's bound policies (paginated, boundAt DESC). */
@@ -321,6 +356,47 @@ export class GoableClient {
     return this.request<CatalogStatsResponse>("GET", "/v1/public/catalog-stats")
   }
 
+  /** Fetch the current published legal document of a kind (no auth). */
+  legalDocument(kind: LegalDocumentKind): Promise<LegalDocumentResponse> {
+    return this.request<LegalDocumentResponse>(
+      "GET",
+      `/v1/legal/${encodeURIComponent(kind)}/current`,
+    )
+  }
+
+  // ── audit / compliance ────────────────────────────────────────────────────
+  /**
+   * Export the calling tenant's own score + outcome audit history for a date
+   * range. `format: "csv"` returns the raw CSV as a `string`; the default
+   * (`"json"`) returns the parsed {@link AuditExportResponse}. Offset-paginated
+   * via `limit` / `offset`.
+   */
+  auditExport(query: AuditExportQuery & { format: "csv" }): Promise<string>
+  auditExport(query: AuditExportQuery & { format?: "json" }): Promise<AuditExportResponse>
+  auditExport(query: AuditExportQuery): Promise<AuditExportResponse | string> {
+    const path = `/v1/audit/export${toQuery(query)}`
+    if (query.format === "csv") return this.requestText("GET", path)
+    return this.request<AuditExportResponse>("GET", path)
+  }
+
+  // ── LLM BYOK (bring-your-own Anthropic key) ───────────────────────────────
+  /** Set/rotate the tenant's Anthropic API key. The server validates it with
+   *  one cheap Anthropic call, encrypts it at rest, and never echoes it back.
+   *  Resolves `void` on the 204. */
+  async setLlmKey(input: SetLlmKeyRequest): Promise<void> {
+    await this.request<void>("PUT", "/v1/tenant/llm-key", input)
+  }
+
+  /** Get the tenant's Anthropic key status (masked — never the key itself). */
+  getLlmKey(): Promise<LlmKeyStatus> {
+    return this.request<LlmKeyStatus>("GET", "/v1/tenant/llm-key")
+  }
+
+  /** Remove the tenant's Anthropic key. Resolves `void` on the 204. */
+  async deleteLlmKey(): Promise<void> {
+    await this.request<void>("DELETE", "/v1/tenant/llm-key")
+  }
+
   /** GDPR Art. 17 erasure. Surfaces the receipt headers from a 204. */
   async deleteUserData(pseudonym: string): Promise<DeleteUserDataResult> {
     const res = await this.rawRequest("DELETE", `/v1/decision/user-data/${encodeURIComponent(pseudonym)}`)
@@ -342,15 +418,21 @@ export class GoableClient {
   }
 
   // ── transport ─────────────────────────────────────────────────────────────
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await this.rawRequest(method, path, body)
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T> {
+    const res = await this.rawRequest(method, path, body, extraHeaders)
     const parsed = await safeJson(res)
-    if (!res.ok) throw toApiError(res.status, parsed)
+    if (!res.ok) throw toApiError(res.status, parsed, res.headers)
     return parsed as T
   }
 
   /** Like {@link request} but returns the raw response body as text — used for
-   *  the NDJSON research streams, which are not a single JSON document. */
+   *  the NDJSON research streams and the `format=csv` audit export, which are
+   *  not a single JSON document. */
   private async requestText(method: string, path: string): Promise<string> {
     const res = await this.rawRequest(method, path)
     let text: string
@@ -366,12 +448,17 @@ export class GoableClient {
       } catch {
         // non-JSON error body — pass the raw text through to toApiError
       }
-      throw toApiError(res.status, parsed)
+      throw toApiError(res.status, parsed, res.headers)
     }
     return text
   }
 
-  private async rawRequest(method: string, path: string, body?: unknown): ReturnType<FetchLike> {
+  private async rawRequest(
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>,
+  ): ReturnType<FetchLike> {
     // `X-Goable-Key` rather than `Authorization: Bearer` — the API
     // sits behind CloudFront with OAC, which hijacks the standard
     // Authorization header for its own SigV4 signature. Custom header
@@ -383,6 +470,11 @@ export class GoableClient {
       Accept: "application/json",
     }
     if (body !== undefined) headers["Content-Type"] = "application/json"
+    if (extraHeaders) {
+      for (const [k, v] of Object.entries(extraHeaders)) {
+        if (v !== undefined) headers[k] = v
+      }
+    }
 
     const controller = this.timeoutMs > 0 ? new AbortController() : undefined
     const timer = controller && this.timeoutMs > 0 ? setTimeout(() => controller.abort(), this.timeoutMs) : undefined
@@ -417,6 +509,11 @@ function toQuery(params?: Record<string, unknown>): string {
   }
   const s = usp.toString()
   return s ? `?${s}` : ""
+}
+
+/** Build the optional `Idempotency-Key` header bag from per-call options. */
+function idempotencyHeader(options?: IdempotencyOptions): Record<string, string> | undefined {
+  return options?.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : undefined
 }
 
 async function safeJson(res: { text(): Promise<string> }): Promise<unknown> {

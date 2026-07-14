@@ -131,6 +131,12 @@ export interface paths {
                 /** @description Score 0-100 + verdict + confidence + eco + calibration_provenance */
                 200: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -158,6 +164,17 @@ export interface paths {
                 /** @description Validation error */
                 422: {
                     headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Daily rate limit (safety cap) exceeded for this endpoint + plan. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the daily rate-limit window resets. Present only on this 429 response. */
+                        "Retry-After"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -487,7 +504,7 @@ export interface paths {
                             binding_constraint?: boolean;
                             best_window_24h?: boolean;
                             best_nearby_spot_km?: number;
-                            /** @description LLM explanation (Pro+) */
+                            /** @description LLM explanation. Available on any plan (Anthropic BYOK) — resolves the tenant's own Anthropic key set via PUT /v1/tenant/llm-key; no key configured degrades to a deterministic template (natural_language.degraded_mode=true) rather than an error. */
                             natural_language?: boolean;
                         };
                     };
@@ -503,15 +520,6 @@ export interface paths {
                         "application/json": {
                             [key: string]: unknown;
                         };
-                    };
-                };
-                /** @description natural_language=true requires Pro+ */
-                402: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
                     };
                 };
                 /** @description No profile for activity */
@@ -549,7 +557,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Personalized go/no-go decision (Pro+) */
+        /** Personalized go/no-go decision (any plan — Anthropic BYOK) */
         post: {
             parameters: {
                 query?: never;
@@ -579,7 +587,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description score + verdict + decision block + degraded_mode + advisory_notice */
+                /** @description score + verdict + decision block + degraded_mode + advisory_notice. Available on any plan; the LLM reasoning narrative requires the tenant's own Anthropic key (PUT /v1/tenant/llm-key) — without one, degraded_mode=true and a deterministic template is returned instead of an error. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -588,15 +596,6 @@ export interface paths {
                         "application/json": {
                             [key: string]: unknown;
                         };
-                    };
-                };
-                /** @description Requires Pro+ plan */
-                402: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
                     };
                 };
                 /** @description No profile for activity */
@@ -670,7 +669,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** LLM narrative explanation of a score (L2c, Pro+) */
+        /**
+         * LLM narrative explanation of a score (L2c, any plan — Anthropic BYOK)
+         * @description Requires the tenant to have its own Anthropic key set via PUT /v1/tenant/llm-key — no longer plan-gated. No key configured → 503 INTELLIGENCE_UNAVAILABLE.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -704,8 +706,8 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Requires Pro+ plan */
-                402: {
+                /** @description Validation error */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -713,8 +715,8 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
-                422: {
+                /** @description No Anthropic key configured for this tenant */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -739,7 +741,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** LLM multi-slot briefing (L2c, Pro+) */
+        /**
+         * LLM multi-slot briefing (L2c, any plan — Anthropic BYOK)
+         * @description Requires the tenant to have its own Anthropic key set via PUT /v1/tenant/llm-key — no longer plan-gated. No key configured → 503 INTELLIGENCE_UNAVAILABLE.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -773,8 +778,8 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Requires Pro+ plan */
-                402: {
+                /** @description Validation error */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -782,8 +787,8 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
-                422: {
+                /** @description No Anthropic key configured for this tenant */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -794,6 +799,146 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenant/llm-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the tenant's Anthropic key status (Anthropic BYOK)
+         * @description Never returns the key — only whether one is set, its last 4 characters, and timestamps.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Masked key status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            set: boolean;
+                            last4?: string;
+                            /** Format: date-time */
+                            setAt?: string;
+                            /** Format: date-time */
+                            lastValidatedAt?: string | null;
+                        };
+                    };
+                };
+                /** @description BYOK storage not configured on this deployment */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Set/rotate the tenant's Anthropic API key (Anthropic BYOK)
+         * @description Validates the key with one cheap Anthropic API call before storing. Encrypts at rest (AES-256-GCM); the plaintext key is NEVER echoed back by this or any other endpoint. Available to any authenticated plan. Rate-limited (this call itself makes one real Anthropic API request).
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The tenant's own Anthropic API key (sk-ant-...). */
+                        apiKey: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Key validated, encrypted, and stored. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Validation error, or Anthropic rejected the key (LLM_KEY_INVALID) */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limited */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description BYOK storage or BYOK_MASTER_KEY not configured on this deployment */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Remove the tenant's Anthropic key (Anthropic BYOK)
+         * @description Hard-deletes the stored ciphertext. LLM routes revert to the no-key degraded/503 path for this tenant.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Key removed. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description BYOK storage not configured on this deployment */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -1079,12 +1224,15 @@ export interface paths {
         put?: never;
         /**
          * Bind a parametric policy (Scale)
-         * @description Convert a bindable quote (≤24h old) into a bound policy for a specific coverage year. Returns the serialised policy + the quoteId + optional `driftAdvisories` — a soft warning surfaced when the resolved cell has an open watch-level L9 drift event. A warning/critical drift event at bind time REFUSES the bind with 422 DRIFT_ACTIVE (see the 422 response). Fires the `underwriting.policy.bound` webhook on success.
+         * @description Convert a bindable quote (≤24h old) into a bound policy for a specific coverage year. Returns the serialised policy + the quoteId + optional `driftAdvisories` — a soft warning surfaced when the resolved cell has an open watch-level L9 drift event. A warning/critical drift event at bind time REFUSES the bind with 422 DRIFT_ACTIVE (see the 422 response). Fires the `underwriting.policy.bound` webhook on success. Supports the optional `Idempotency-Key` header (see parameter description) so a client-side retry after a network timeout can't double-bind.
          */
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Optional client-generated key (unique per logical request, scoped to your tenant). A retry with the SAME key and the SAME request body replays the original response verbatim without re-executing the request. A retry with the same key and a DIFFERENT body, or one that arrives while the original is still in flight, returns 409 IDEMPOTENCY_KEY_CONFLICT. Claims expire after 24h. */
+                    "Idempotency-Key"?: string;
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -1142,7 +1290,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Quote already bound to another policy */
+                /** @description Quote already bound to another policy (QUOTE_ALREADY_BOUND), or IDEMPOTENCY_KEY_CONFLICT — a request with this Idempotency-Key is still in flight, or was already used with a different request body */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -1510,12 +1658,15 @@ export interface paths {
         put?: never;
         /**
          * Report observed outcome for a scored session
-         * @description Close the calibration loop. Submit the actual outcome (ran/cancelled/no_show/rescheduled/note) of a /v1/score session. The calibration pipeline + forecast verification + drift monitor consume these. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't).
+         * @description Close the calibration loop. Submit the actual outcome (ran/cancelled/no_show/rescheduled/note) of a /v1/score session. The calibration pipeline + forecast verification + drift monitor consume these. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't). Supports the optional `Idempotency-Key` header (see parameter description) so a client-side retry can't record the same outcome twice.
          */
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Optional client-generated key (unique per logical request, scoped to your tenant). A retry with the SAME key and the SAME request body replays the original response verbatim without re-executing the request. A retry with the same key and a DIFFERENT body, or one that arrives while the original is still in flight, returns 409 IDEMPOTENCY_KEY_CONFLICT. Claims expire after 24h. */
+                    "Idempotency-Key"?: string;
+                };
                 path: {
                     /** @description Session UUID returned in the /v1/score response metadata. */
                     sessionId: string;
@@ -1556,6 +1707,15 @@ export interface paths {
                 };
                 /** @description Session not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description IDEMPOTENCY_KEY_CONFLICT — a request with this Idempotency-Key is still in flight, or was already used with a different request body */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1716,6 +1876,12 @@ export interface paths {
                 /** @description Ranked top-K sub-spots + observability metadata. The optional `coverage` field appears only on empty results from a catalog gap (not from hard-gating). */
                 200: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -1786,6 +1952,17 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Daily rate limit (safety cap) exceeded for this endpoint + plan. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the daily rate-limit window resets. Present only on this 429 response. */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Spatial resolver not wired */
                 503: {
                     headers: {
@@ -1813,8 +1990,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * LLM analysis of a borderline / surprising score (L2c, Pro+)
-         * @description Asks the LLM to inspect a score that's near a verdict boundary or contradicts operator intuition. Returns a narrative + a structured `limiting_class` taxonomy entry.
+         * LLM analysis of a borderline / surprising score (L2c, any plan — Anthropic BYOK)
+         * @description Asks the LLM to inspect a score that's near a verdict boundary or contradicts operator intuition. Returns a narrative + a structured `limiting_class` taxonomy entry. Requires the tenant's own Anthropic key (PUT /v1/tenant/llm-key) — no longer plan-gated.
          */
         post: {
             parameters: {
@@ -1849,8 +2026,8 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Requires Pro+ plan */
-                402: {
+                /** @description Validation error */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1858,8 +2035,8 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
-                422: {
+                /** @description No Anthropic key configured for this tenant */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2755,6 +2932,239 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a standalone activity outcome
+         * @description Submit an observed outcome for an activity session not tied to a specific /v1/score call — the operator-reported behavioural signal behind the calibration + research datasets. For an outcome linked to a specific scored session, use POST /v1/score/{sessionId}/outcome instead. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        occurred_at: string;
+                        activity_slug: string;
+                        /** @enum {string} */
+                        outcome_type: "ran" | "cancelled" | "rescheduled" | "no_show" | "note";
+                        /** @description Optional catalogue sub-spot slug. */
+                        spot_id?: string;
+                        /** @description Optional link back to a scoring_audit_log row. */
+                        audit_log_id?: string;
+                        detail?: {
+                            [key: string]: unknown;
+                        };
+                        /**
+                         * @description Stream G equipment-transition signal.
+                         * @enum {string}
+                         */
+                        equipment_type?: "electric" | "combustion" | "manual";
+                    };
+                };
+            };
+            responses: {
+                /** @description Accepted (queued for the next calibration batch) */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description Missing scope: outcomes:write */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audit/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export the caller's own score + outcome audit history
+         * @description Tenant-scoped export of your own scoring_audit_log activity (one row per /v1/score call, with any linked outcome inline), date-range filtered. The tenant is always the calling API key's tenant — there is no way to request another tenant's data. Outcomes reported via the free-standing POST /v1/outcomes (i.e. not linked to a specific score via audit_log_id) are not included. Offset-paginated; `X-Total-Count` on every response carries the total row count for the window.
+         */
+        get: {
+            parameters: {
+                query: {
+                    from: string;
+                    to: string;
+                    format?: "csv" | "json";
+                    limit?: number;
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description CSV (format=csv) or JSON (format=json, default) export of the window. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            rows: {
+                                [key: string]: unknown;
+                            }[];
+                            meta: {
+                                total: number;
+                                limit: number;
+                                offset: number;
+                                window: {
+                                    from?: string;
+                                    to?: string;
+                                };
+                            };
+                        };
+                        "text/csv": string;
+                    };
+                };
+                /** @description Validation error, `to` before `from`, or WINDOW_TOO_LARGE (range exceeds 366 days) */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Audit export is not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/legal/{kind}/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch the current published legal document (no auth)
+         * @description Public read of the currently-published version of a legal document (Terms of Service, Privacy Policy, DPA, SLA, Acceptable Use, Cookie Policy). Returns the full body + content hash + published timestamp. Used by the signup flow + marketing site to render always-current legal copy without hardcoding it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Legal document kind. */
+                    kind: "terms_of_service" | "privacy_policy" | "data_processing_agreement" | "sla" | "acceptable_use" | "cookie_policy";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The current published document of the requested kind */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            document: {
+                                /** Format: uuid */
+                                id: string;
+                                kind: string;
+                                version: string;
+                                title: string;
+                                body: string;
+                                contentHash: string;
+                                status: string;
+                                /** Format: date-time */
+                                createdAt: string;
+                                /** Format: date-time */
+                                publishedAt: string | null;
+                            };
+                        };
+                    };
+                };
+                /** @description Unknown document kind, or no published document */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Legal document store not wired */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2789,10 +3199,12 @@ export interface components {
             verdict: components["schemas"]["Verdict"];
             confidence: number;
             breakdown: ({
-                dimension?: string;
-                score?: number;
+                name?: string;
+                value?: number;
+                suitability?: number;
                 weight?: number;
                 contribution?: number;
+                hasData?: boolean;
             } & {
                 [key: string]: unknown;
             })[];
@@ -2800,9 +3212,10 @@ export interface components {
                 [key: string]: unknown;
             };
             alerts: ({
+                /** @enum {string} */
+                level?: "info" | "warning" | "critical";
                 code?: string;
-                severity?: string;
-                message?: string;
+                description?: string;
             } & {
                 [key: string]: unknown;
             })[];

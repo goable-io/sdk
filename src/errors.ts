@@ -14,6 +14,26 @@ export interface ZodIssueLike {
   [k: string]: unknown
 }
 
+/** Rate-limit snapshot parsed from `X-RateLimit-*` response headers. Present
+ *  when the server sent them (currently the `score` + `recommend-spot`
+ *  endpoints; omitted on unlimited Scale plans). */
+export interface RateLimit {
+  /** `X-RateLimit-Limit` — daily safety cap for this endpoint + plan. */
+  limit: number
+  /** `X-RateLimit-Remaining` — requests left in the current window. */
+  remaining: number
+  /** `X-RateLimit-Reset` — Unix timestamp (seconds) when the window resets. */
+  reset: number
+}
+
+/** Structured extras attached to a {@link GoableApiError}. */
+export interface ApiErrorExtra {
+  issues?: ZodIssueLike[]
+  detail?: Record<string, unknown>
+  retryAfterSeconds?: number | null
+  rateLimit?: RateLimit
+}
+
 export class GoableApiError extends Error {
   // Typed `string` (not the literal) so subclasses like DriftActiveError can
   // override it with their own name.
@@ -26,18 +46,21 @@ export class GoableApiError extends Error {
   readonly issues?: ZodIssueLike[]
   /** Free-form extra context (e.g. plan info, quote id). */
   readonly detail?: Record<string, unknown>
+  /** Seconds to wait before retrying, from the `Retry-After` header. Set on a
+   *  `429`; `null` when the header is absent or unparseable. Lets a caller
+   *  implement a compliant back-off (`if (err.status === 429) sleep(err.retryAfterSeconds)`). */
+  readonly retryAfterSeconds: number | null
+  /** Rate-limit snapshot from `X-RateLimit-*` headers, when the response carried them. */
+  readonly rateLimit?: RateLimit
 
-  constructor(
-    status: number,
-    code: string,
-    message?: string,
-    extra?: { issues?: ZodIssueLike[]; detail?: Record<string, unknown> },
-  ) {
+  constructor(status: number, code: string, message?: string, extra?: ApiErrorExtra) {
     super(message ?? code)
     this.status = status
     this.code = code
     if (extra?.issues) this.issues = extra.issues
     if (extra?.detail) this.detail = extra.detail
+    this.retryAfterSeconds = extra?.retryAfterSeconds ?? null
+    if (extra?.rateLimit) this.rateLimit = extra.rateLimit
     // Restore prototype chain for `instanceof` across transpilation targets.
     Object.setPrototypeOf(this, GoableApiError.prototype)
   }
@@ -56,12 +79,7 @@ export class DriftActiveError extends GoableApiError {
    *  per-cell and best-effort (documented, not part of the typed contract). */
   readonly openDriftEvents: Array<Record<string, unknown>>
 
-  constructor(
-    status: number,
-    code: string,
-    message?: string,
-    extra?: { issues?: ZodIssueLike[]; detail?: Record<string, unknown> },
-  ) {
+  constructor(status: number, code: string, message?: string, extra?: ApiErrorExtra) {
     super(status, code, message, extra)
     const raw = extra?.detail?.openDriftEvents
     this.openDriftEvents = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : []
@@ -90,15 +108,37 @@ interface RawErrorBody {
   detail?: unknown
 }
 
+/** A minimal read-only header bag (the `headers` of a fetch Response). */
+export interface HeaderBag {
+  get(name: string): string | null
+}
+
+/** Parse an integer header, returning null when absent or non-numeric. */
+function intHeader(headers: HeaderBag | undefined, name: string): number | null {
+  const v = headers?.get(name)
+  if (v == null) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
 /** Map a parsed error body + status into a GoableApiError. Tolerant of a
- *  non-conforming body (falls back to the status code as the error code). */
-export function toApiError(status: number, body: unknown): GoableApiError {
+ *  non-conforming body (falls back to the status code as the error code).
+ *  When `headers` are supplied, surfaces `Retry-After` (as `retryAfterSeconds`)
+ *  and the `X-RateLimit-*` snapshot on the resulting error. */
+export function toApiError(status: number, body: unknown, headers?: HeaderBag): GoableApiError {
   const b = (body ?? {}) as RawErrorBody
   const code = typeof b.error === "string" ? b.error : `HTTP_${status}`
   const message = typeof b.message === "string" ? b.message : undefined
-  const extra: { issues?: ZodIssueLike[]; detail?: Record<string, unknown> } = {}
+  const extra: ApiErrorExtra = {}
   if (Array.isArray(b.issues)) extra.issues = b.issues as ZodIssueLike[]
   if (b.detail && typeof b.detail === "object") extra.detail = b.detail as Record<string, unknown>
+  extra.retryAfterSeconds = intHeader(headers, "Retry-After")
+  const limit = intHeader(headers, "X-RateLimit-Limit")
+  const remaining = intHeader(headers, "X-RateLimit-Remaining")
+  const reset = intHeader(headers, "X-RateLimit-Reset")
+  if (limit !== null && remaining !== null && reset !== null) {
+    extra.rateLimit = { limit, remaining, reset }
+  }
   // Specialise the one error the SDK models with its own class. Stays a
   // GoableApiError subclass, so generic catch sites are unaffected.
   if (code === "DRIFT_ACTIVE") return new DriftActiveError(status, code, message, extra)

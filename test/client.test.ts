@@ -231,6 +231,165 @@ describe("v0.4.0 surface — routing", () => {
   })
 })
 
+describe("v0.5.0 surface — routing", () => {
+  test("every new method hits its documented path + verb", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: {} }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+
+    await c.healthReady()
+    await c.submitOutcome({
+      occurred_at: "2026-07-01T00:00:00Z",
+      activity_slug: "kitesurfing",
+      outcome_type: "ran",
+    })
+    await c.legalDocument("terms_of_service")
+    await c.getLlmKey()
+    await c.setLlmKey({ apiKey: "sk-ant-xxxxxxxxxxxxxxxxxxxx" })
+    await c.deleteLlmKey()
+
+    const seen = calls.map((k) => `${k.method} ${k.url.replace("https://x", "")}`)
+    expect(seen).toEqual([
+      "GET /v1/health/ready",
+      "POST /v1/outcomes",
+      "GET /v1/legal/terms_of_service/current",
+      "GET /v1/tenant/llm-key",
+      "PUT /v1/tenant/llm-key",
+      "DELETE /v1/tenant/llm-key",
+    ])
+  })
+
+  test("legalDocument url-encodes the kind path segment", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: { document: {} } }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    await c.legalDocument("privacy_policy")
+    expect(calls[0]!.url).toBe("https://x/v1/legal/privacy_policy/current")
+  })
+
+  test("setLlmKey sends the JSON body and resolves void on 204", async () => {
+    const { fetch, calls } = mockFetch(() => ({ status: 204 }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    const out = await c.setLlmKey({ apiKey: "sk-ant-xxxxxxxxxxxxxxxxxxxx" })
+    expect(calls[0]!.method).toBe("PUT")
+    expect(calls[0]!.headers!["Content-Type"]).toBe("application/json")
+    expect(JSON.parse(calls[0]!.body!)).toEqual({ apiKey: "sk-ant-xxxxxxxxxxxxxxxxxxxx" })
+    expect(out).toBeUndefined()
+  })
+
+  test("deleteLlmKey sends bodyless DELETE and resolves void on 204", async () => {
+    const { fetch, calls } = mockFetch(() => ({ status: 204 }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    const out = await c.deleteLlmKey()
+    expect(calls[0]!.method).toBe("DELETE")
+    expect(calls[0]!.body).toBeUndefined()
+    expect(calls[0]!.headers!["Content-Type"]).toBeUndefined()
+    expect(out).toBeUndefined()
+  })
+
+  test("getLlmKey returns the masked status body", async () => {
+    const { fetch } = mockFetch(() => ({ body: { set: true, last4: "1234" } }))
+    const res = await new GoableClient({ apiKey: KEY, fetch }).getLlmKey()
+    expect(res).toEqual({ set: true, last4: "1234" })
+  })
+})
+
+describe("v0.5.0 surface — audit export (CSV or JSON)", () => {
+  test("format=json (default) returns the parsed JSON body", async () => {
+    const { fetch, calls } = mockFetch(() => ({
+      body: { rows: [{ id: "a" }], meta: { total: 1, limit: 100, offset: 0, window: {} } },
+    }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    const res = await c.auditExport({
+      from: "2026-01-01T00:00:00Z",
+      to: "2026-02-01T00:00:00Z",
+    })
+    expect(calls[0]!.method).toBe("GET")
+    expect(calls[0]!.url).toBe(
+      "https://x/v1/audit/export?from=2026-01-01T00%3A00%3A00Z&to=2026-02-01T00%3A00%3A00Z",
+    )
+    expect(res.rows).toHaveLength(1)
+    expect(res.meta.total).toBe(1)
+  })
+
+  test("format=csv returns the raw CSV string, no JSON.parse", async () => {
+    const csv = "id,activity,score\nabc,kitesurfing,82\n"
+    const { fetch, calls } = mockFetch(() => ({ body: csv }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    const out = await c.auditExport({
+      from: "2026-01-01T00:00:00Z",
+      to: "2026-02-01T00:00:00Z",
+      format: "csv",
+    })
+    expect(calls[0]!.url).toBe(
+      "https://x/v1/audit/export?from=2026-01-01T00%3A00%3A00Z&to=2026-02-01T00%3A00%3A00Z&format=csv",
+    )
+    expect(typeof out).toBe("string")
+    expect(out).toBe(csv)
+  })
+})
+
+describe("v0.5.0 surface — idempotency keys", () => {
+  test("bindPolicy sends the Idempotency-Key header when provided", async () => {
+    const { fetch, calls } = mockFetch(() => ({ status: 201, body: {} }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    await c.bindPolicy(
+      { quoteId: "q-1", coverageYear: 2027, premiumCollection: "external" },
+      { idempotencyKey: "idem-abc" },
+    )
+    expect(calls[0]!.headers!["Idempotency-Key"]).toBe("idem-abc")
+  })
+
+  test("bindPolicy omits the header when no key is given", async () => {
+    const { fetch, calls } = mockFetch(() => ({ status: 201, body: {} }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    await c.bindPolicy({ quoteId: "q-1", coverageYear: 2027, premiumCollection: "external" })
+    expect(calls[0]!.headers!["Idempotency-Key"]).toBeUndefined()
+  })
+
+  test("reportOutcome forwards the Idempotency-Key header", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: {} }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    await c.reportOutcome("sess-1", { outcome_type: "ran" }, { idempotencyKey: "idem-xyz" })
+    expect(calls[0]!.url).toBe("https://x/v1/score/sess-1/outcome")
+    expect(calls[0]!.headers!["Idempotency-Key"]).toBe("idem-xyz")
+  })
+})
+
+describe("v0.5.0 surface — rate-limit headers on errors", () => {
+  test("429 surfaces retryAfterSeconds + rateLimit on GoableApiError", async () => {
+    const { fetch } = mockFetch(() => ({
+      ok: false,
+      status: 429,
+      headers: {
+        "Retry-After": "42",
+        "X-RateLimit-Limit": "100",
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": "1799999999",
+      },
+      body: { error: "RATE_LIMITED", message: "Slow down" },
+    }))
+    const err = await new GoableClient({ apiKey: KEY, fetch })
+      .score({ activity: "a", location: { lat: 0, lng: 0 } })
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(GoableApiError)
+    expect(err.code).toBe("RATE_LIMITED")
+    expect(err.retryAfterSeconds).toBe(42)
+    expect(err.rateLimit).toEqual({ limit: 100, remaining: 0, reset: 1799999999 })
+  })
+
+  test("non-429 error without rate-limit headers leaves the fields null/undefined", async () => {
+    const { fetch } = mockFetch(() => ({
+      ok: false,
+      status: 402,
+      body: { error: "PAYMENT_REQUIRED" },
+    }))
+    const err = await new GoableClient({ apiKey: KEY, fetch })
+      .score({ activity: "a", location: { lat: 0, lng: 0 } })
+      .catch((e) => e)
+    expect(err.retryAfterSeconds).toBeNull()
+    expect(err.rateLimit).toBeUndefined()
+  })
+})
+
 describe("v0.4.0 surface — NDJSON research exports", () => {
   test("verificationExport returns the raw NDJSON string, no JSON.parse", async () => {
     const ndjson = '{"key":"a","brier":0.1}\n{"key":"b","brier":0.2}\n{"_type":"meta"}\n'

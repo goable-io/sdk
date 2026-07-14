@@ -34,9 +34,22 @@ type OkOf<O> = O extends { responses: infer R }
   : never
 /** The query-parameter object of an operation. */
 type QueryOf<O> = O extends { parameters: { query?: infer Q } } ? NonNullable<Q> : never
+/** The path-parameter object of an operation. */
+type PathOf<O> = O extends { parameters: { path?: infer P } } ? NonNullable<P> : never
+/** The `application/json` body for a specific response status — used when an
+ *  operation declares several media types (e.g. JSON + text/csv) and we want
+ *  only the JSON branch, not the `object | string` union `ResOf` would give. */
+type JsonResOf<O, C extends number> = O extends { responses: infer R }
+  ? C extends keyof R
+    ? R[C] extends { content: { "application/json": infer J } }
+      ? J
+      : never
+    : never
+  : never
 
 type Get<P extends keyof paths> = paths[P] extends { get: infer O } ? O : never
 type Post<P extends keyof paths> = paths[P] extends { post: infer O } ? O : never
+type Put<P extends keyof paths> = paths[P] extends { put: infer O } ? O : never
 type Patch<P extends keyof paths> = paths[P] extends { patch: infer O } ? O : never
 
 // ── shared primitives (from components) ───────────────────────────────────
@@ -86,6 +99,10 @@ export type ScoreDifficultyResponse = OkOf<Post<"/v1/score/difficulty">>
 
 export type ReportOutcomeRequest = ReqOf<Post<"/v1/score/{sessionId}/outcome">>
 export type ReportOutcomeResponse = OkOf<Post<"/v1/score/{sessionId}/outcome">>
+
+/** Standalone activity outcome, not tied to a scored session (`POST /v1/outcomes`). */
+export type SubmitOutcomeRequest = ReqOf<Post<"/v1/outcomes">>
+export type SubmitOutcomeResponse = OkOf<Post<"/v1/outcomes">>
 
 export type EdgeCaseRequest = ReqOf<Post<"/v1/intelligence/edge-case">>
 export type EdgeCaseResponse = OkOf<Post<"/v1/intelligence/edge-case">>
@@ -141,6 +158,29 @@ export type PublicSignupRequest = ReqOf<Post<"/v1/public/signup">>
 export type PublicSignupResponse = OkOf<Post<"/v1/public/signup">>
 
 export type CatalogStatsResponse = OkOf<Get<"/v1/public/catalog-stats">>
+
+/** Legal document kinds (from the OpenAPI path-param enum). */
+export type LegalDocumentKind = PathOf<Get<"/v1/legal/{kind}/current">>["kind"]
+export type LegalDocumentResponse = OkOf<Get<"/v1/legal/{kind}/current">>
+
+// ── health / audit / BYOK (tenant surfaces) ───────────────────────────────
+export type HealthReadyResponse = OkOf<Get<"/v1/health/ready">>
+
+export type AuditExportQuery = QueryOf<Get<"/v1/audit/export">>
+/** The JSON body of an audit export (`format=json`, the default). The `csv`
+ *  variant is returned as a raw `string` by the client, not this type. */
+export type AuditExportResponse = JsonResOf<Get<"/v1/audit/export">, 200>
+
+export type SetLlmKeyRequest = ReqOf<Put<"/v1/tenant/llm-key">>
+export type LlmKeyStatus = OkOf<Get<"/v1/tenant/llm-key">>
+
+// ── request options ───────────────────────────────────────────────────────
+/** Per-call options for endpoints that accept an `Idempotency-Key` header
+ *  (`bindPolicy`, `reportOutcome`) — a client-generated key so a retry after a
+ *  network timeout can't double-apply the write. */
+export interface IdempotencyOptions {
+  idempotencyKey?: string
+}
 
 // ── webhooks ──────────────────────────────────────────────────────────────
 /** Every webhook event the platform can deliver (from the OpenAPI enum). */
