@@ -4,6 +4,52 @@ All notable changes to `@goable-io/sdk` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-07-14
+
+Completeness sweep: the client now exposes a method for **every** path in the
+public OpenAPI contract (39 paths / 42 operations — 100% coverage). The contract
+snapshot (`openapi.json`) was re-synced from the canonical
+`apps/api/openapi.json` and the wire types regenerated. Additive only — no
+breaking changes to existing methods or types.
+
+### Added
+
+- **Health**: `healthReady()` (`GET /v1/health/ready`).
+- **Outcomes**: `submitOutcome()` (`POST /v1/outcomes`) — a standalone activity
+  outcome not tied to a scored session (complements the existing
+  `reportOutcome(sessionId, …)`).
+- **Audit / compliance**: `auditExport(query)` (`GET /v1/audit/export`) — returns
+  the raw CSV `string` when `format: "csv"`, otherwise the parsed JSON export
+  (overloaded return type).
+- **LLM BYOK**: `setLlmKey()` / `getLlmKey()` / `deleteLlmKey()`
+  (`PUT`/`GET`/`DELETE /v1/tenant/llm-key`) — set/rotate, read masked status, and
+  remove the tenant's own Anthropic key. `set`/`delete` resolve `void` on 204.
+- **Legal**: `legalDocument(kind)` (`GET /v1/legal/{kind}/current`, no auth) with
+  the `LegalDocumentKind` enum type.
+- **Idempotency**: `bindPolicy()` and `reportOutcome()` accept an optional
+  `{ idempotencyKey }` — forwarded as the `Idempotency-Key` header so a retry
+  after a network timeout can't double-apply the write.
+- **Rate limits**: `GoableApiError` now carries `retryAfterSeconds` (from the
+  `Retry-After` header on a `429`; `null` otherwise) and `rateLimit`
+  (`{ limit, remaining, reset }` from the `X-RateLimit-*` headers when present).
+  Exported the `RateLimit` and `ApiErrorExtra` types.
+
+### Changed
+
+- `openapi.json` re-synced to the canonical `apps/api/openapi.json`, adding the
+  `/v1/health/ready`, `/v1/outcomes`, `/v1/audit/export`, `/v1/legal/*` and
+  `/v1/tenant/llm-key` paths, plus the `score` request `rider_skill_level` input
+  and the documented `X-RateLimit-*` / `Retry-After` / `Idempotency-Key` headers.
+  Types regenerated via `pnpm gen`.
+
+### Notes
+
+- `score().eco` remains an **open record** (`{ [key: string]: unknown }`) in the
+  contract by design, so provenance blocks such as `eco.lightning_observation`
+  (and any website-layer enrichments like `eco.sstValidation`) are reachable
+  without the SDK hard-coding — and therefore lying about — a shape the API
+  doesn't guarantee.
+
 ## [0.4.0] — 2026-07-04
 
 Coverage sweep: the contract now describes the full public API surface, and the
@@ -52,5 +98,6 @@ only — no breaking changes to existing methods or types.
 
 Initial standalone release of `@goable-io/sdk`.
 
+[0.5.0]: https://github.com/goable-io/sdk/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/goable-io/sdk/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/goable-io/sdk/releases/tag/v0.3.0
