@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Goable API",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "description": "Multi-tenant suitability scoring for outdoor activities across water, snow, air, and land families. Real-time forecast scoring, probabilistic ensembles, LLM intelligence narratives, historical + climate-decadal projections, personalized decision agent, counterfactual analysis, and parametric underwriting.",
     "contact": {
       "name": "Goable",
@@ -135,10 +135,13 @@
               "type": "object",
               "additionalProperties": true,
               "properties": {
-                "dimension": {
+                "name": {
                   "type": "string"
                 },
-                "score": {
+                "value": {
+                  "type": "number"
+                },
+                "suitability": {
                   "type": "number"
                 },
                 "weight": {
@@ -146,6 +149,9 @@
                 },
                 "contribution": {
                   "type": "number"
+                },
+                "hasData": {
+                  "type": "boolean"
                 }
               }
             }
@@ -160,13 +166,18 @@
               "type": "object",
               "additionalProperties": true,
               "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": [
+                    "info",
+                    "warning",
+                    "critical"
+                  ]
+                },
                 "code": {
                   "type": "string"
                 },
-                "severity": {
-                  "type": "string"
-                },
-                "message": {
+                "description": {
                   "type": "string"
                 }
               }
@@ -1435,6 +1446,29 @@
                   "$ref": "#/components/schemas/ScoreResponse"
                 }
               }
+            },
+            "headers": {
+              "X-RateLimit-Limit": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans."
+              },
+              "X-RateLimit-Remaining": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans."
+              },
+              "X-RateLimit-Reset": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans."
+              }
             }
           },
           "402": {
@@ -1459,6 +1493,25 @@
           },
           "422": {
             "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily rate limit (safety cap) exceeded for this endpoint + plan.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Seconds until the daily rate-limit window resets. Present only on this 429 response."
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1948,7 +2001,7 @@
                       },
                       "natural_language": {
                         "type": "boolean",
-                        "description": "LLM explanation (Pro+)"
+                        "description": "LLM explanation. Available on any plan (Anthropic BYOK) — resolves the tenant's own Anthropic key set via PUT /v1/tenant/llm-key; no key configured degrades to a deterministic template (natural_language.degraded_mode=true) rather than an error."
                       }
                     }
                   }
@@ -1965,16 +2018,6 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true
-                }
-              }
-            }
-          },
-          "402": {
-            "description": "natural_language=true requires Pro+",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -2004,7 +2047,7 @@
     },
     "/v1/decision": {
       "post": {
-        "summary": "Personalized go/no-go decision (Pro+)",
+        "summary": "Personalized go/no-go decision (any plan — Anthropic BYOK)",
         "requestBody": {
           "required": true,
           "content": {
@@ -2082,22 +2125,12 @@
         },
         "responses": {
           "200": {
-            "description": "score + verdict + decision block + degraded_mode + advisory_notice",
+            "description": "score + verdict + decision block + degraded_mode + advisory_notice. Available on any plan; the LLM reasoning narrative requires the tenant's own Anthropic key (PUT /v1/tenant/llm-key) — without one, degraded_mode=true and a deterministic template is returned instead of an error.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "additionalProperties": true
-                }
-              }
-            }
-          },
-          "402": {
-            "description": "Requires Pro+ plan",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -2147,7 +2180,8 @@
     },
     "/v1/intelligence/explain": {
       "post": {
-        "summary": "LLM narrative explanation of a score (L2c, Pro+)",
+        "summary": "LLM narrative explanation of a score (L2c, any plan — Anthropic BYOK)",
+        "description": "Requires the tenant to have its own Anthropic key set via PUT /v1/tenant/llm-key — no longer plan-gated. No key configured → 503 INTELLIGENCE_UNAVAILABLE.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2201,8 +2235,8 @@
               }
             }
           },
-          "402": {
-            "description": "Requires Pro+ plan",
+          "422": {
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2211,8 +2245,8 @@
               }
             }
           },
-          "422": {
-            "description": "Validation error",
+          "503": {
+            "description": "No Anthropic key configured for this tenant",
             "content": {
               "application/json": {
                 "schema": {
@@ -2226,7 +2260,8 @@
     },
     "/v1/intelligence/briefing": {
       "post": {
-        "summary": "LLM multi-slot briefing (L2c, Pro+)",
+        "summary": "LLM multi-slot briefing (L2c, any plan — Anthropic BYOK)",
+        "description": "Requires the tenant to have its own Anthropic key set via PUT /v1/tenant/llm-key — no longer plan-gated. No key configured → 503 INTELLIGENCE_UNAVAILABLE.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2280,8 +2315,8 @@
               }
             }
           },
-          "402": {
-            "description": "Requires Pro+ plan",
+          "422": {
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2290,8 +2325,137 @@
               }
             }
           },
+          "503": {
+            "description": "No Anthropic key configured for this tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenant/llm-key": {
+      "put": {
+        "summary": "Set/rotate the tenant's Anthropic API key (Anthropic BYOK)",
+        "description": "Validates the key with one cheap Anthropic API call before storing. Encrypts at rest (AES-256-GCM); the plaintext key is NEVER echoed back by this or any other endpoint. Available to any authenticated plan. Rate-limited (this call itself makes one real Anthropic API request).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "apiKey"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "apiKey": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 300,
+                    "description": "The tenant's own Anthropic API key (sk-ant-...)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Key validated, encrypted, and stored."
+          },
           "422": {
-            "description": "Validation error",
+            "description": "Validation error, or Anthropic rejected the key (LLM_KEY_INVALID)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "BYOK storage or BYOK_MASTER_KEY not configured on this deployment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get the tenant's Anthropic key status (Anthropic BYOK)",
+        "description": "Never returns the key — only whether one is set, its last 4 characters, and timestamps.",
+        "responses": {
+          "200": {
+            "description": "Masked key status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "set"
+                  ],
+                  "properties": {
+                    "set": {
+                      "type": "boolean"
+                    },
+                    "last4": {
+                      "type": "string"
+                    },
+                    "setAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "lastValidatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "BYOK storage not configured on this deployment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove the tenant's Anthropic key (Anthropic BYOK)",
+        "description": "Hard-deletes the stored ciphertext. LLM routes revert to the no-key degraded/503 path for this tenant.",
+        "responses": {
+          "204": {
+            "description": "Key removed."
+          },
+          "503": {
+            "description": "BYOK storage not configured on this deployment",
             "content": {
               "application/json": {
                 "schema": {
@@ -2769,7 +2933,20 @@
     "/v1/underwriting/policy/bind": {
       "post": {
         "summary": "Bind a parametric policy (Scale)",
-        "description": "Convert a bindable quote (≤24h old) into a bound policy for a specific coverage year. Returns the serialised policy + the quoteId + optional `driftAdvisories` — a soft warning surfaced when the resolved cell has an open watch-level L9 drift event. A warning/critical drift event at bind time REFUSES the bind with 422 DRIFT_ACTIVE (see the 422 response). Fires the `underwriting.policy.bound` webhook on success.",
+        "description": "Convert a bindable quote (≤24h old) into a bound policy for a specific coverage year. Returns the serialised policy + the quoteId + optional `driftAdvisories` — a soft warning surfaced when the resolved cell has an open watch-level L9 drift event. A warning/critical drift event at bind time REFUSES the bind with 422 DRIFT_ACTIVE (see the 422 response). Fires the `underwriting.policy.bound` webhook on success. Supports the optional `Idempotency-Key` header (see parameter description) so a client-side retry after a network timeout can't double-bind.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "description": "Optional client-generated key (unique per logical request, scoped to your tenant). A retry with the SAME key and the SAME request body replays the original response verbatim without re-executing the request. A retry with the same key and a DIFFERENT body, or one that arrives while the original is still in flight, returns 409 IDEMPOTENCY_KEY_CONFLICT. Claims expire after 24h."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2892,7 +3069,7 @@
             }
           },
           "409": {
-            "description": "Quote already bound to another policy",
+            "description": "Quote already bound to another policy (QUOTE_ALREADY_BOUND), or IDEMPOTENCY_KEY_CONFLICT — a request with this Idempotency-Key is still in flight, or was already used with a different request body",
             "content": {
               "application/json": {
                 "schema": {
@@ -3311,7 +3488,7 @@
     "/v1/score/{sessionId}/outcome": {
       "post": {
         "summary": "Report observed outcome for a scored session",
-        "description": "Close the calibration loop. Submit the actual outcome (ran/cancelled/no_show/rescheduled/note) of a /v1/score session. The calibration pipeline + forecast verification + drift monitor consume these. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't).",
+        "description": "Close the calibration loop. Submit the actual outcome (ran/cancelled/no_show/rescheduled/note) of a /v1/score session. The calibration pipeline + forecast verification + drift monitor consume these. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't). Supports the optional `Idempotency-Key` header (see parameter description) so a client-side retry can't record the same outcome twice.",
         "parameters": [
           {
             "name": "sessionId",
@@ -3322,6 +3499,17 @@
               "format": "uuid"
             },
             "description": "Session UUID returned in the /v1/score response metadata."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "description": "Optional client-generated key (unique per logical request, scoped to your tenant). A retry with the SAME key and the SAME request body replays the original response verbatim without re-executing the request. A retry with the same key and a DIFFERENT body, or one that arrives while the original is still in flight, returns 409 IDEMPOTENCY_KEY_CONFLICT. Claims expire after 24h."
           }
         ],
         "requestBody": {
@@ -3378,6 +3566,16 @@
           },
           "404": {
             "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "IDEMPOTENCY_KEY_CONFLICT — a request with this Idempotency-Key is still in flight, or was already used with a different request body",
             "content": {
               "application/json": {
                 "schema": {
@@ -3753,6 +3951,29 @@
                   }
                 }
               }
+            },
+            "headers": {
+              "X-RateLimit-Limit": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans."
+              },
+              "X-RateLimit-Remaining": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans."
+              },
+              "X-RateLimit-Reset": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans."
+              }
             }
           },
           "401": {
@@ -3785,6 +4006,25 @@
               }
             }
           },
+          "429": {
+            "description": "Daily rate limit (safety cap) exceeded for this endpoint + plan.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Seconds until the daily rate-limit window resets. Present only on this 429 response."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Spatial resolver not wired",
             "content": {
@@ -3800,8 +4040,8 @@
     },
     "/v1/intelligence/edge-case": {
       "post": {
-        "summary": "LLM analysis of a borderline / surprising score (L2c, Pro+)",
-        "description": "Asks the LLM to inspect a score that's near a verdict boundary or contradicts operator intuition. Returns a narrative + a structured `limiting_class` taxonomy entry.",
+        "summary": "LLM analysis of a borderline / surprising score (L2c, any plan — Anthropic BYOK)",
+        "description": "Asks the LLM to inspect a score that's near a verdict boundary or contradicts operator intuition. Returns a narrative + a structured `limiting_class` taxonomy entry. Requires the tenant's own Anthropic key (PUT /v1/tenant/llm-key) — no longer plan-gated.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3854,8 +4094,8 @@
               }
             }
           },
-          "402": {
-            "description": "Requires Pro+ plan",
+          "422": {
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
@@ -3864,8 +4104,8 @@
               }
             }
           },
-          "422": {
-            "description": "Validation error",
+          "503": {
+            "description": "No Anthropic key configured for this tenant",
             "content": {
               "application/json": {
                 "schema": {
@@ -5173,6 +5413,354 @@
                     "totals",
                     "byActivity"
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/outcomes": {
+      "post": {
+        "summary": "Report a standalone activity outcome",
+        "description": "Submit an observed outcome for an activity session not tied to a specific /v1/score call — the operator-reported behavioural signal behind the calibration + research datasets. For an outcome linked to a specific scored session, use POST /v1/score/{sessionId}/outcome instead. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "occurred_at",
+                  "activity_slug",
+                  "outcome_type"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "occurred_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "activity_slug": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "outcome_type": {
+                    "type": "string",
+                    "enum": [
+                      "ran",
+                      "cancelled",
+                      "rescheduled",
+                      "no_show",
+                      "note"
+                    ]
+                  },
+                  "spot_id": {
+                    "type": "string",
+                    "description": "Optional catalogue sub-spot slug."
+                  },
+                  "audit_log_id": {
+                    "type": "string",
+                    "description": "Optional link back to a scoring_audit_log row."
+                  },
+                  "detail": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "equipment_type": {
+                    "type": "string",
+                    "enum": [
+                      "electric",
+                      "combustion",
+                      "manual"
+                    ],
+                    "description": "Stream G equipment-transition signal."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted (queued for the next calibration batch)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing scope: outcomes:write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/audit/export": {
+      "get": {
+        "summary": "Export the caller's own score + outcome audit history",
+        "description": "Tenant-scoped export of your own scoring_audit_log activity (one row per /v1/score call, with any linked outcome inline), date-range filtered. The tenant is always the calling API key's tenant — there is no way to request another tenant's data. Outcomes reported via the free-standing POST /v1/outcomes (i.e. not linked to a specific score via audit_log_id) are not included. Offset-paginated; `X-Total-Count` on every response carries the total row count for the window.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "json"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV (format=csv) or JSON (format=json, default) export of the window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "rows",
+                    "meta"
+                  ],
+                  "properties": {
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "total",
+                        "limit",
+                        "offset",
+                        "window"
+                      ],
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "window": {
+                          "type": "object",
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error, `to` before `from`, or WINDOW_TOO_LARGE (range exceeds 366 days)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Audit export is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/legal/{kind}/current": {
+      "get": {
+        "summary": "Fetch the current published legal document (no auth)",
+        "security": [],
+        "description": "Public read of the currently-published version of a legal document (Terms of Service, Privacy Policy, DPA, SLA, Acceptable Use, Cookie Policy). Returns the full body + content hash + published timestamp. Used by the signup flow + marketing site to render always-current legal copy without hardcoding it.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "terms_of_service",
+                "privacy_policy",
+                "data_processing_agreement",
+                "sla",
+                "acceptable_use",
+                "cookie_policy"
+              ]
+            },
+            "description": "Legal document kind."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current published document of the requested kind",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "document": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "body": {
+                          "type": "string"
+                        },
+                        "contentHash": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "publishedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "version",
+                        "title",
+                        "body",
+                        "contentHash",
+                        "status",
+                        "createdAt",
+                        "publishedAt"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "document"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown document kind, or no published document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Legal document store not wired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
