@@ -47,6 +47,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "gen": "tsx scripts/gen.ts",
+    "normalize": "node scripts/normalizeSpec.mjs openapi.json",
     "prepublishOnly": "tsc",
     "clean": "rm -rf dist *.tsbuildinfo"
   },

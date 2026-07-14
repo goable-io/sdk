@@ -4,6 +4,21 @@ All notable changes to `@goable-io/sdk` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed (tooling only — no API surface change)
+
+- **`refresh-openapi` drift check hardened.** The daily sync compared the
+  committed `openapi.json` against the live `/docs/openapi.json`, which reports
+  the deployment's real `info.version` (e.g. `1.0.0`) and expands JSON arrays
+  differently — so it flagged a cosmetic "drift" (and opened a PR) every day even
+  with no contract change. Both sides now run through `scripts/normalizeSpec.mjs`
+  (`pnpm normalize`): `info.version` pinned to `0.0.0` and canonical 2-space
+  serialisation. The committed spec is kept normalised (guarded by
+  `test/specNormalized.test.ts`), so a sync PR only opens on a real contract
+  change. The committed `openapi.json` is reformatted to the canonical form
+  (array formatting only — the generated types are byte-identical).
+
 ## [0.5.0] — 2026-07-14
 
 Completeness sweep: the client now exposes a method for **every** path in the
