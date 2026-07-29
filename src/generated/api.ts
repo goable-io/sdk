@@ -3205,6 +3205,8 @@ export interface components {
                 weight?: number;
                 contribution?: number;
                 hasData?: boolean;
+                /** @description True when this dimension's metric carries a feasibility gate — a HARD prerequisite. Below/above its threshold the activity is impossible and the whole score is gated to 0, rather than this dimension merely being weighted. Lets a go/no-go client tell hard prerequisites from soft weighted dimensions straight from the breakdown. Present from catalog v2.4.0 (false on older catalogs). */
+                prerequisite?: boolean;
             } & {
                 [key: string]: unknown;
             })[];
@@ -3263,6 +3265,8 @@ export interface components {
                     weight?: number;
                     contribution?: number;
                     hasData?: boolean;
+                    /** @description True when this dimension's metric carries a feasibility gate (a HARD prerequisite) — see /v1/score breakdown[].prerequisite. Present from catalog v2.4.0. */
+                    prerequisite?: boolean;
                 } & {
                     [key: string]: unknown;
                 })[];
