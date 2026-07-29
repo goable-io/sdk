@@ -3218,6 +3218,11 @@ export interface components {
                 level?: "info" | "warning" | "critical";
                 code?: string;
                 description?: string;
+                /**
+                 * @description On a gate-trip alert, why the activity is a no-go: 'safety' = dangerous conditions; 'feasibility' = impossible at any skill level (e.g. no rideable wind). Absent on non-gate alerts. Present from catalog v2.4.0.
+                 * @enum {string}
+                 */
+                kind?: "safety" | "feasibility";
             } & {
                 [key: string]: unknown;
             })[];
@@ -3274,6 +3279,17 @@ export interface components {
                 distribution?: {
                     [key: string]: unknown;
                 };
+                /** @description Per-activity scoring alerts (same shape as /v1/score). On a feasibility gate the engine returns score 0 with an empty breakdown, so alerts[].kind = 'feasibility' is the only signal distinguishing 'not feasible' from 'unsafe'. */
+                alerts?: ({
+                    /** @enum {string} */
+                    level?: "info" | "warning" | "critical";
+                    code?: string;
+                    description?: string;
+                    /** @enum {string} */
+                    kind?: "safety" | "feasibility";
+                } & {
+                    [key: string]: unknown;
+                })[];
                 /** @description "ACTIVITY_NOT_FOUND" when the activity slug does not resolve. */
                 error?: string;
             } & {
