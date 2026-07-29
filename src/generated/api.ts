@@ -3247,13 +3247,36 @@ export interface components {
             [key: string]: unknown;
         };
         ScoreMultiResponse: {
+            /** Format: uuid */
+            session_id?: string;
+            location?: components["schemas"]["GeoPoint"];
             results: ({
                 activity: string;
-                score: number;
-                verdict: components["schemas"]["Verdict"];
+                profile_slug?: string;
+                score?: number;
+                verdict?: components["schemas"]["Verdict"];
+                confidence?: number;
+                breakdown?: ({
+                    name?: string;
+                    value?: number;
+                    suitability?: number;
+                    weight?: number;
+                    contribution?: number;
+                    hasData?: boolean;
+                } & {
+                    [key: string]: unknown;
+                })[];
+                /** @description Present on ensemble requests */
+                distribution?: {
+                    [key: string]: unknown;
+                };
+                /** @description "ACTIVITY_NOT_FOUND" when the activity slug does not resolve. */
+                error?: string;
             } & {
                 [key: string]: unknown;
             })[];
+            /** @description Activity slugs sorted by score descending; errored activities are omitted. */
+            rankedByScore?: string[];
         } & {
             [key: string]: unknown;
         };
