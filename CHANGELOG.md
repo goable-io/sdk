@@ -6,6 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.6.0] — 2026-07-30
+
+Contract re-sync to the live API after the monorepo's score-family coherence
+release: the `/v1/score/multi` response is now fully modelled, feasibility-gate
+prerequisites surface on each breakdown entry, and score alerts carry their
+`kind`. Additive only — no breaking changes to existing methods or types.
+Versioned in lockstep with `goable-sdk` (Python) 0.6.0.
+
+### Added
+
+- **`/v1/score/multi` response fully typed.** The multi-spot response `breakdown`
+  is now modelled end-to-end (per-spot dimension breakdown) instead of a loose
+  object.
+- **`breakdown[].prerequisite`.** Each dimension breakdown entry now exposes the
+  prerequisite (go/no-go feasibility) flag from the scoring engine.
+- **`alert.kind`.** Score alerts now carry a `kind` discriminator
+  (`safety` / `feasibility`), and the multi-alert shape is modelled.
+
 ### Changed (CI/tooling only — no API surface change)
 
 - **`refresh-openapi` drift check hardened.** The daily sync compared the
