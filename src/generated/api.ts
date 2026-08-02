@@ -1678,6 +1678,11 @@ export interface paths {
                     "application/json": {
                         /** @enum {string} */
                         outcome_type: "ran" | "cancelled" | "rescheduled" | "no_show" | "note";
+                        /**
+                         * @description Structured cause when a session did not run as planned. Only 'weather' and 'safety' outcomes count as evidence against the forecast score and feed weather-suitability calibration; 'operational', 'customer_demand', 'mechanical', and 'unknown' are treated as business facts and excluded. Echoed on the outcome.created webhook.
+                         * @enum {string}
+                         */
+                        reason_category?: "weather" | "operational" | "customer_demand" | "safety" | "mechanical" | "unknown";
                         detail?: {
                             [key: string]: unknown;
                         };
@@ -2943,12 +2948,15 @@ export interface paths {
         put?: never;
         /**
          * Report a standalone activity outcome
-         * @description Submit an observed outcome for an activity session not tied to a specific /v1/score call — the operator-reported behavioural signal behind the calibration + research datasets. For an outcome linked to a specific scored session, use POST /v1/score/{sessionId}/outcome instead. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't).
+         * @description Submit an observed outcome for an activity session not tied to a specific /v1/score call — the operator-reported behavioural signal behind the calibration + research datasets. For an outcome linked to a specific scored session, use POST /v1/score/{sessionId}/outcome instead. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't). Supports the optional `Idempotency-Key` header (see parameter description) so a retried batch submission records each outcome exactly once.
          */
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Optional client-generated key (unique per logical request, scoped to your tenant). A retry with the SAME key and the SAME request body replays the original response verbatim without re-executing the request. A retry with the same key and a DIFFERENT body, or one that arrives while the original is still in flight, returns 409 IDEMPOTENCY_KEY_CONFLICT. Claims expire after 24h. */
+                    "Idempotency-Key"?: string;
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -2972,6 +2980,13 @@ export interface paths {
                          * @enum {string}
                          */
                         equipment_type?: "electric" | "combustion" | "manual";
+                        /**
+                         * @description Structured cause when a session did not run as planned. Only 'weather' and 'safety' outcomes count as evidence against the forecast score and feed weather-suitability calibration; 'operational', 'customer_demand', 'mechanical', and 'unknown' are treated as business facts and excluded.
+                         * @enum {string}
+                         */
+                        reason_category?: "weather" | "operational" | "customer_demand" | "safety" | "mechanical" | "unknown";
+                        /** @description Client-supplied lot / ingestion-run handle. Tag a batch of outcomes with a shared value so a later POST /v1/outcomes/void can recall exactly that lot if it was mislabelled. */
+                        batch_ref?: string;
                     };
                 };
             };
@@ -2996,7 +3011,102 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description IDEMPOTENCY_KEY_CONFLICT — a request with this Idempotency-Key is still in flight, or was already used with a different request body */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Validation error */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/outcomes/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recall (void) a batch of previously-reported outcomes
+         * @description Non-destructive 'lot recall'. When an integration mislabels a batch — e.g. tags operational cancellations as reason_category='weather' — pull that lot back here instead of deleting it. Matching rows are stamped voided (kept for audit) and drop out of the verification MV + cohort signal on the next refresh, so they stop influencing the engine. Scoped to the calling key's tenant. Idempotent — already-voided rows are skipped. At least one narrowing selector (batch_ref, audit_log_id, submitted_by_key_id, occurred_from, occurred_to) is REQUIRED so a recall can never blank a tenant's whole history. Requires the `outcomes:write` scope.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Why the lot is being recalled — recorded on every voided row for audit. */
+                        reason: string;
+                        /** @description Recall the lot tagged with this batch_ref. */
+                        batch_ref?: string;
+                        /** @description Recall the single outcome linked to this scored session. */
+                        audit_log_id?: string;
+                        /** @description Recall everything a given API key submitted (combine with occurred_from/to). */
+                        submitted_by_key_id?: string;
+                        /** Format: date-time */
+                        occurred_from?: string;
+                        /** Format: date-time */
+                        occurred_to?: string;
+                        /**
+                         * @description Narrow the recall to a single outcome_type.
+                         * @enum {string}
+                         */
+                        outcome_type?: "ran" | "cancelled" | "rescheduled" | "no_show" | "note";
+                        /**
+                         * @description Narrow the recall to a single reason_category — e.g. void only the rows a dev mislabelled 'weather'.
+                         * @enum {string}
+                         */
+                        reason_category?: "weather" | "operational" | "customer_demand" | "safety" | "mechanical" | "unknown";
+                    };
+                };
+            };
+            responses: {
+                /** @description Number of rows newly voided by this recall. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            voided: number;
+                        };
+                    };
+                };
+                /** @description Missing scope: outcomes:write */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error, or no narrowing selector provided */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -3323,6 +3433,17 @@ export interface components {
             severity: "watch" | "warning" | "critical";
             /** Format: date-time */
             since_timestamp: string;
+            cell: {
+                activity: string;
+                sub_spot: string | null;
+                horizon_h: number;
+            };
+            /** @enum {string} */
+            metric: "decision_bss";
+            /** @enum {string} */
+            reference_type: "operator_outcome";
+            days_in_decline: number;
+            recalibration_triggered: boolean;
         };
         ConfidenceDetail: components["schemas"]["ConfidenceDetailForecast"] | components["schemas"]["ConfidenceDetailHistorical"] | components["schemas"]["ConfidenceDetailClimate"];
         ConfidenceDetailForecast: {

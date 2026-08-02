@@ -70,6 +70,8 @@ import type {
   SubmitObservationsResponse,
   SubmitOutcomeRequest,
   SubmitOutcomeResponse,
+  VoidOutcomesRequest,
+  VoidOutcomesResponse,
   SustainabilityIndexQuery,
   SustainabilityIndexResponse,
   UpdateStationRequest,
@@ -215,9 +217,35 @@ export class GoableClient {
   /** Report a standalone activity outcome not tied to a scored session — the
    *  operator-reported behavioural signal behind the calibration + research
    *  datasets. Responds 202. Requires the `outcomes:write` scope. For an
-   *  outcome linked to a specific score, use {@link reportOutcome} instead. */
-  submitOutcome(input: SubmitOutcomeRequest): Promise<SubmitOutcomeResponse> {
-    return this.request<SubmitOutcomeResponse>("POST", "/v1/outcomes", input)
+   *  outcome linked to a specific score, use {@link reportOutcome} instead.
+   *
+   *  Pass `reasonCategory` on the input to attribute a non-run cause
+   *  (only `weather` / `safety` feed forecast calibration; other causes are
+   *  recorded but excluded), and `batchRef` to tag a lot that a later
+   *  {@link voidOutcomes} recall can pull back. Pass `idempotencyKey` via
+   *  `options` so a retry after a network timeout can't double-record. */
+  submitOutcome(
+    input: SubmitOutcomeRequest,
+    options?: IdempotencyOptions,
+  ): Promise<SubmitOutcomeResponse> {
+    return this.request<SubmitOutcomeResponse>(
+      "POST",
+      "/v1/outcomes",
+      input,
+      idempotencyHeader(options),
+    )
+  }
+
+  /** Recall ("lot recall") a batch of previously-reported outcomes: stamp the
+   *  matching rows voided so they stop influencing calibration + verification,
+   *  without deleting them (they stay for audit). Non-destructive and
+   *  idempotent — already-voided rows are skipped. At least one narrowing
+   *  selector (`batchRef`, `auditLogId`, `submittedByKeyId`, `occurredFrom`,
+   *  `occurredTo`) is REQUIRED so a recall can never blank a tenant's whole
+   *  history. Returns `{ voided }` — the number of rows retracted. Requires
+   *  the `outcomes:write` scope. */
+  voidOutcomes(input: VoidOutcomesRequest): Promise<VoidOutcomesResponse> {
+    return this.request<VoidOutcomesResponse>("POST", "/v1/outcomes/void", input)
   }
 
   /** LLM edge-case narrative for a marginal score. */

@@ -354,6 +354,51 @@ describe("v0.5.0 surface — idempotency keys", () => {
   })
 })
 
+describe("outcomes recall + reason attribution surface", () => {
+  test("voidOutcomes posts the recall body to /v1/outcomes/void and returns the count", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: { voided: 3 } }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    const res = await c.voidOutcomes({
+      reason: "integration mislabelled operational cancels as weather",
+      batch_ref: "ingest-2026-07-31",
+    })
+    expect(calls[0]!.method).toBe("POST")
+    expect(calls[0]!.url).toBe("https://x/v1/outcomes/void")
+    expect(JSON.parse(calls[0]!.body!)).toMatchObject({
+      reason: "integration mislabelled operational cancels as weather",
+      batch_ref: "ingest-2026-07-31",
+    })
+    expect(res.voided).toBe(3)
+  })
+
+  test("submitOutcome forwards the Idempotency-Key header when provided", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: {} }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    await c.submitOutcome(
+      { occurred_at: "2026-07-01T00:00:00Z", activity_slug: "kitesurfing", outcome_type: "ran" },
+      { idempotencyKey: "idem-out-1" },
+    )
+    expect(calls[0]!.url).toBe("https://x/v1/outcomes")
+    expect(calls[0]!.headers!["Idempotency-Key"]).toBe("idem-out-1")
+  })
+
+  test("submitOutcome carries reason_category + batch_ref in the body", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: {} }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    await c.submitOutcome({
+      occurred_at: "2026-07-01T00:00:00Z",
+      activity_slug: "kitesurfing",
+      outcome_type: "cancelled",
+      reason_category: "weather",
+      batch_ref: "ingest-2026-07-31",
+    })
+    expect(JSON.parse(calls[0]!.body!)).toMatchObject({
+      reason_category: "weather",
+      batch_ref: "ingest-2026-07-31",
+    })
+  })
+})
+
 describe("v0.5.0 surface — rate-limit headers on errors", () => {
   test("429 surfaces retryAfterSeconds + rateLimit on GoableApiError", async () => {
     const { fetch } = mockFetch(() => ({

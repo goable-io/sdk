@@ -104,6 +104,11 @@ export type ReportOutcomeResponse = OkOf<Post<"/v1/score/{sessionId}/outcome">>
 export type SubmitOutcomeRequest = ReqOf<Post<"/v1/outcomes">>
 export type SubmitOutcomeResponse = OkOf<Post<"/v1/outcomes">>
 
+/** Recall ("lot recall") a batch of previously-reported outcomes
+ *  (`POST /v1/outcomes/void`). */
+export type VoidOutcomesRequest = ReqOf<Post<"/v1/outcomes/void">>
+export type VoidOutcomesResponse = OkOf<Post<"/v1/outcomes/void">>
+
 export type EdgeCaseRequest = ReqOf<Post<"/v1/intelligence/edge-case">>
 export type EdgeCaseResponse = OkOf<Post<"/v1/intelligence/edge-case">>
 
