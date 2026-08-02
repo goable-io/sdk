@@ -147,7 +147,8 @@ OpenAPI path. Grouped by area:
 | `updateStation(stationId, input)` | `PATCH /v1/observations/stations/{stationId}` | partial update |
 | `recentObservations(stationId, query?)` | `GET /v1/observations/stations/{stationId}/recent` | most-recent observations |
 | `submitObservations(input)` | `POST /v1/observations` | push into the 0-6h window (Pro+) |
-| `submitOutcome(input)` | `POST /v1/outcomes` | standalone outcome (not tied to a scored session) |
+| `submitOutcome(input, opts?)` | `POST /v1/outcomes` | standalone outcome; `input.reason_category` + `input.batch_ref`; `opts.idempotencyKey` |
+| `voidOutcomes(input)` | `POST /v1/outcomes/void` | "lot recall" — retract a mislabelled batch (needs ≥1 selector); returns `{ voided }` |
 
 ### Audit & compliance
 

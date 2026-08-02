@@ -6,6 +6,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.7.0] — 2026-08-02
+
+Contract re-sync adding the outcomes recall + reason-attribution surface, plus
+the enriched drift-flag response that came with the full-spec sync. Additive
+only — existing methods and types are unchanged. Ships the same API contract as
+the Python SDK's 0.3.0 release (the two SDKs track the same contract but carry
+independent version numbers).
+
+### Added
+
+- **`client.voidOutcomes(input)` — "lot recall".** New `POST /v1/outcomes/void`:
+  non-destructively retract a batch of previously-reported outcomes (rows are
+  stamped voided and kept for audit) so they stop influencing calibration +
+  verification on the next MV refresh. At least one narrowing selector
+  (`batch_ref`, `audit_log_id`, `submitted_by_key_id`, `occurred_from`,
+  `occurred_to`) is required so a recall can never blank a tenant's whole
+  history; returns `{ voided }`, the number of rows retracted.
+- **`reason_category` on outcome submissions.** The `submitOutcome` and
+  `reportOutcome` request bodies now accept `reason_category`
+  (`weather` / `operational` / `customer_demand` / `safety` / `mechanical` /
+  `unknown`). Only `weather` and `safety` count as evidence against the forecast
+  and feed weather-suitability calibration; the rest are recorded as business
+  facts and excluded.
+- **`batch_ref` on `submitOutcome`.** Tag a lot / ingestion run so a later
+  `voidOutcomes` recall can pull back exactly that batch if it was mislabelled.
+- **`submitOutcome` idempotency.** `submitOutcome(input, { idempotencyKey })` now
+  forwards the `Idempotency-Key` header, matching `reportOutcome` — a retry after
+  a network timeout can't double-record the outcome.
+- **Enriched drift-flag response.** The drift-flag payload now carries `cell`,
+  `metric`, `reference_type`, `days_in_decline`, and `recalibration_triggered`
+  alongside the existing `severity` / `since_timestamp` (came with the full-spec
+  re-sync).
+
 ## [0.6.0] — 2026-07-30
 
 Contract re-sync to the live API after the monorepo's score-family coherence
