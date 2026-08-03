@@ -33,9 +33,24 @@ const result = await goable.score({
   window: { from: "2026-06-01T06:00:00Z", to: "2026-06-01T18:00:00Z" },
 })
 
-result.score    // 0-100
-result.verdict  // "unsafe" | "poor" | "marginal" | "fair" | "favorable" | "excellent"
+result.score      // 0-100
+result.verdict    // "unsafe" | "not_feasible" | "poor" | "marginal" | "fair" | "favorable" | "excellent"
+result.scoreBasis // "forecast" | "gated" | "no_data"
 result.confidence
+```
+
+`verdict` distinguishes two different reasons for a 0: `"unsafe"` is a genuine
+safety gate (lightning, AQI, …); `"not_feasible"` is a feasibility gate (no
+navigable route, no lift service, …) — not dangerous, just not doable.
+`scoreBasis` tells you which path produced the response: `"gated"` for either
+of those hard gates (still with a full `breakdown`/`physics` showing why),
+`"no_data"` when no forecast samples were available, `"forecast"` otherwise.
+
+Discover the activity slugs you can pass as `activity`:
+
+```ts
+const { activities } = await goable.activities()
+// [{ slug: "kitesurfing", display_name: "Kitesurfing", family: "water" }, …]
 ```
 
 Inverse query — "where should I go?" — ranks sub-spots for an activity within
@@ -48,6 +63,24 @@ const spots = await goable.recommendSpot({
   window: { from: "2026-06-01T06:00:00Z", to: "2026-06-01T18:00:00Z" },
   topK: 5,
 })
+```
+
+### Typed activity slugs
+
+The `activity` field on activity-taking requests (`score`, `scoreSeries`,
+`scoreHistorical`, `explainCounterfactual`, `decision`, `briefing`,
+`scoreDifficulty`, `recommendSpot`) is typed as `ActivitySlug` — an **open
+union**: it gives IDE autocomplete + typo-catching for the activities in the
+shipped `KNOWN_ACTIVITY_SLUGS` snapshot, but a string outside that list still
+type-checks. The catalog itself is always the source of truth, so a
+newly-added activity is never a compile error just because the snapshot
+hasn't caught up — call `goable.activities()` to discover the live list at
+runtime.
+
+```ts
+import { KNOWN_ACTIVITY_SLUGS, type ActivitySlug } from "@goable-io/sdk"
+
+KNOWN_ACTIVITY_SLUGS // readonly ["alpine-skiing", "boat-excursion", …, "wing-foiling"]
 ```
 
 ## Authentication
@@ -170,6 +203,7 @@ OpenAPI path. Grouped by area:
 |---|---|---|
 | `health()` | `GET /v1/health` | liveness |
 | `healthReady()` | `GET /v1/health/ready` | readiness (503 → `GoableApiError`) |
+| `activities()` | `GET /v1/activities` | catalog-derived base activity slugs; `GET /v1/profiles` alias |
 | `legalDocument(kind)` | `GET /v1/legal/{kind}/current` | current published legal doc |
 | `catalogStats()` | `GET /v1/public/catalog-stats` | open catalogue coverage stats |
 | `sustainabilityIndex(query)` | `GET /v1/public/sustainability-index` | Goable Sustainability Index (JSON-LD) |

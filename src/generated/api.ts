@@ -152,7 +152,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description No profile for activity */
+                /** @description No profile for activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -183,6 +183,105 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List discoverable base activity slugs
+         * @description P2 (activity discovery DX) — the canonical, catalog-derived list of base activity slugs a caller can pass as `activity` to POST /v1/score (and the other activity-resolving routes). Never hardcoded: reflects exactly the base (`spot_kind: "base"`) profiles in the loaded catalog, so it can't drift as activities are added. `GET /v1/profiles` is an alias for this same endpoint.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Base activity slugs discoverable in the loaded catalog */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            activities: {
+                                /** @example kitesurfing */
+                                slug: string;
+                                /** @example Kitesurfing */
+                                display_name: string;
+                                /**
+                                 * @description Activity category (water/snow/air/land/commercial).
+                                 * @example water
+                                 */
+                                family: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Alias for GET /v1/activities
+         * @description Identical response to GET /v1/activities. Kept as an alias for back-compat with this document's original (pre-/v1/activities) promise of a `GET /v1/profiles` listing endpoint.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Base activity slugs discoverable in the loaded catalog (same as GET /v1/activities) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            activities: {
+                                /** @example kitesurfing */
+                                slug: string;
+                                /** @example Kitesurfing */
+                                display_name: string;
+                                /** @example water */
+                                family: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -229,7 +328,7 @@ export interface paths {
                         "application/json": components["schemas"]["ScoreSeriesResponse"];
                     };
                 };
-                /** @description No profile for activity */
+                /** @description No profile for activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -522,7 +621,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description No profile for activity */
+                /** @description No profile for activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -598,7 +697,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description No profile for activity */
+                /** @description No profile for activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1110,7 +1209,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description No profile for activity */
+                /** @description No profile for activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2645,19 +2744,13 @@ export interface paths {
         };
         /**
          * Public Goable Sustainability Index (no auth, JSON-LD)
-         * @description Public JSON-LD artefact of the Goable Sustainability Index (CC BY 4.0). Session-weighted 0-100 index across zones plus per-zone breakdowns. Governed by k-anonymity (default k≥10) + a 90-day publication lag in the underlying reader — no additional privacy work required for the public surface. Content-Type: application/ld+json. Edge-cached for 5 minutes.
+         * @description Public JSON-LD artefact of the Goable Sustainability Index (CC BY 4.0) — the LATEST PUBLISHED, frozen, signed annual report (or the report for `?year=N`). This is a stored, immutable document, not a live on-demand aggregate: no unpublished figure is ever served here. When nothing has been published yet (for the requested year, or at all), the response is the same document shape with zero zones/sessions and `publication: null` — the honest empty-state. Content-Type: application/ld+json. Edge-cached for 5 minutes.
          */
         get: {
             parameters: {
-                query: {
-                    /** @description Inclusive start of the reporting period. */
-                    from: string;
-                    /** @description Exclusive end of the reporting period. */
-                    to: string;
-                    /** @description Zone grid cell edge length in km (default: reader-configured). */
-                    zoneKm?: number;
-                    /** @description k-anonymity threshold: zones with fewer than k sessions are suppressed. */
-                    k?: number;
+                query?: {
+                    /** @description Report year. Omit to get the most recently published year. */
+                    year?: number;
                 };
                 header?: never;
                 path?: never;
@@ -2665,7 +2758,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Sustainability Index document (JSON-LD) */
+                /** @description Sustainability Index document (JSON-LD), with publication metadata */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2715,6 +2808,15 @@ export interface paths {
                             /** @enum {string} */
                             license: "CC BY 4.0";
                             attribution: string;
+                            /** @description Signing/publication metadata for the frozen report. null when no report has been published for this period (the honest empty-state) — every other field above is then a zero-data placeholder, not a real figure. */
+                            publication: null | {
+                                year: number;
+                                revision: number;
+                                /** Format: date-time */
+                                publishedAt: string;
+                                signedBy: string;
+                                methodologyVersion: string;
+                            };
                         } & {
                             [key: string]: unknown;
                         };
@@ -2729,7 +2831,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Sustainability index reader not wired */
+                /** @description Sustainability index publication store not wired */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2985,6 +3087,23 @@ export interface paths {
                          * @enum {string}
                          */
                         reason_category?: "weather" | "operational" | "customer_demand" | "safety" | "mechanical" | "unknown";
+                        /** @description Participants in the session. Captured and disclosed (e.g. average group size) but held out of the sustainability composite pending a site carrying-capacity baseline. */
+                        group_size?: number;
+                        /**
+                         * @description Operator annual declaration of the facility's energy source.
+                         * @enum {string}
+                         */
+                        facility_renewable_energy?: "renewable" | "mixed" | "grid" | "unknown";
+                        /**
+                         * @description How participants got to the session. Highest-materiality but lowest-substantiability signal (an operator estimate) — reported as an estimate, not a measured value.
+                         * @enum {string}
+                         */
+                        access_mode?: "foot" | "bike" | "public_transport" | "car" | "boat" | "flight" | "mixed" | "unknown";
+                        /**
+                         * @description Whether the equipment used was rented/shared, owned, or a mix (circularity proxy).
+                         * @enum {string}
+                         */
+                        equipment_provenance?: "rental_shared" | "owned" | "mixed" | "unknown";
                         /** @description Client-supplied lot / ingestion-run handle. Tag a batch of outcomes with a shared value so a later POST /v1/outcomes/void can recall exactly that lot if it was mislabelled. */
                         batch_ref?: string;
                     };
@@ -3303,16 +3422,22 @@ export interface components {
             };
         };
         /** @enum {string} */
-        Verdict: "unsafe" | "poor" | "marginal" | "fair" | "favorable" | "excellent";
+        Verdict: "unsafe" | "not_feasible" | "poor" | "marginal" | "fair" | "favorable" | "excellent";
         ScoreResponse: {
             score: number;
             verdict: components["schemas"]["Verdict"];
             confidence: number;
+            /**
+             * @description Explicit discriminator for why `score`/`verdict` came out the way they did. 'forecast' = the normal path, every profile gate passed. 'gated' = a hard gate (safety or feasibility) tripped — `score` is forced to 0, but `breakdown`/`physics` still carry the real per-dimension conditions (each breakdown entry's `contribution` is zeroed, since nothing contributed to the gated 0, while `suitability`/`hasData` and the physics values stay populated) so a no-go response shows WHY. 'no_data' = no weather samples were available at all, so `breakdown`/`physics` are genuinely empty. Do not infer gate/no-data from `breakdown` emptiness — a gate trip populates `breakdown` too; read this field instead.
+             * @enum {string}
+             */
+            scoreBasis: "forecast" | "gated" | "no_data";
             breakdown: ({
                 name?: string;
                 value?: number;
                 suitability?: number;
                 weight?: number;
+                /** @description This dimension's weighted contribution to `score`. Zeroed on a `scoreBasis: "gated"` response — nothing contributed to a gated 0 (Σcontribution = 0 = score) — even though `suitability`/`hasData` above still reflect the real conditions. */
                 contribution?: number;
                 hasData?: boolean;
                 /** @description True when this dimension's metric carries a feasibility gate — a HARD prerequisite. Below/above its threshold the activity is impossible and the whole score is gated to 0, rather than this dimension merely being weighted. Lets a go/no-go client tell hard prerequisites from soft weighted dimensions straight from the breakdown. Present from catalog v2.4.0 (false on older catalogs). */
@@ -3389,7 +3514,7 @@ export interface components {
                 distribution?: {
                     [key: string]: unknown;
                 };
-                /** @description Per-activity scoring alerts (same shape as /v1/score). On a feasibility gate the engine returns score 0 with an empty breakdown, so alerts[].kind = 'feasibility' is the only signal distinguishing 'not feasible' from 'unsafe'. */
+                /** @description Per-activity scoring alerts (same shape as /v1/score). verdict = 'not_feasible' already distinguishes an impossible-but-not-dangerous read (e.g. no rideable wind) from 'unsafe'; alerts[].kind = 'feasibility' on the triggering alert carries the same signal for callers that want the underlying reason. */
                 alerts?: ({
                     /** @enum {string} */
                     level?: "info" | "warning" | "critical";

@@ -9,6 +9,7 @@
  */
 
 import type { components, paths } from "./generated/api.ts"
+import type { ActivitySlug } from "./generated/activitySlugs.ts"
 
 // ── helpers ────────────────────────────────────────────────────────────
 /** The sole media body of a request/response, whatever the media type
@@ -52,37 +53,47 @@ type Post<P extends keyof paths> = paths[P] extends { post: infer O } ? O : neve
 type Put<P extends keyof paths> = paths[P] extends { put: infer O } ? O : never
 type Patch<P extends keyof paths> = paths[P] extends { patch: infer O } ? O : never
 
+/** Narrow a request body's `activity: string` field to the typed (open)
+ *  `ActivitySlug` union for autocomplete, leaving bodies without a top-level
+ *  `activity` untouched. Open union ⇒ assignment-compatible with `string`,
+ *  so this is purely additive/non-breaking. */
+type WithActivity<T> = T extends { activity: string }
+  ? Omit<T, "activity"> & { activity: ActivitySlug }
+  : T
+
 // ── shared primitives (from components) ───────────────────────────────────
 export type GeoPoint = components["schemas"]["GeoPoint"]
 export type TimeWindowInput = components["schemas"]["TimeWindow"]
 export type Verdict = components["schemas"]["Verdict"]
 
 // ── per-endpoint request + response aliases ───────────────────────────────
-export type ScoreRequest = ReqOf<Post<"/v1/score">>
+export type ScoreRequest = WithActivity<ReqOf<Post<"/v1/score">>>
 export type ScoreResponse = ResOf<Post<"/v1/score">, 200>
+/** Whether a score came from a real forecast, a gate no-go, or absent data. */
+export type ScoreBasis = NonNullable<ScoreResponse["scoreBasis"]>
 
-export type ScoreSeriesRequest = ReqOf<Post<"/v1/score/series">>
+export type ScoreSeriesRequest = WithActivity<ReqOf<Post<"/v1/score/series">>>
 export type ScoreSeriesResponse = ResOf<Post<"/v1/score/series">, 200>
 
 export type ScoreMultiRequest = ReqOf<Post<"/v1/score/multi">>
 export type ScoreMultiResponse = ResOf<Post<"/v1/score/multi">, 200>
 
-export type ScoreHistoricalRequest = ReqOf<Post<"/v1/score/historical">>
+export type ScoreHistoricalRequest = WithActivity<ReqOf<Post<"/v1/score/historical">>>
 export type ScoreHistoricalResponse = ResOf<Post<"/v1/score/historical">, 200>
 
 export type ScorePortfolioRequest = ReqOf<Post<"/v1/score/portfolio">>
 export type ScorePortfolioResponse = ResOf<Post<"/v1/score/portfolio">, 200>
 
-export type CounterfactualRequest = ReqOf<Post<"/v1/score/explain-counterfactual">>
+export type CounterfactualRequest = WithActivity<ReqOf<Post<"/v1/score/explain-counterfactual">>>
 export type CounterfactualResponse = ResOf<Post<"/v1/score/explain-counterfactual">, 200>
 
-export type DecisionRequest = ReqOf<Post<"/v1/decision">>
+export type DecisionRequest = WithActivity<ReqOf<Post<"/v1/decision">>>
 export type DecisionResponse = ResOf<Post<"/v1/decision">, 200>
 
 export type ExplainRequest = ReqOf<Post<"/v1/intelligence/explain">>
 export type ExplainResponse = ResOf<Post<"/v1/intelligence/explain">, 200>
 
-export type BriefingRequest = ReqOf<Post<"/v1/intelligence/briefing">>
+export type BriefingRequest = WithActivity<ReqOf<Post<"/v1/intelligence/briefing">>>
 export type BriefingResponse = ResOf<Post<"/v1/intelligence/briefing">, 200>
 
 export type ProjectionsRequest = ReqOf<Post<"/v1/projections">>
@@ -91,10 +102,10 @@ export type ProjectionsResponse = ResOf<Post<"/v1/projections">, 200>
 export type QuoteRequest = ReqOf<Post<"/v1/underwriting/quote">>
 export type QuoteResponse = ResOf<Post<"/v1/underwriting/quote">, 200>
 
-export type RecommendSpotRequest = ReqOf<Post<"/v1/recommend-spot">>
+export type RecommendSpotRequest = WithActivity<ReqOf<Post<"/v1/recommend-spot">>>
 export type RecommendSpotResponse = ResOf<Post<"/v1/recommend-spot">, 200>
 
-export type ScoreDifficultyRequest = ReqOf<Post<"/v1/score/difficulty">>
+export type ScoreDifficultyRequest = WithActivity<ReqOf<Post<"/v1/score/difficulty">>>
 export type ScoreDifficultyResponse = OkOf<Post<"/v1/score/difficulty">>
 
 export type ReportOutcomeRequest = ReqOf<Post<"/v1/score/{sessionId}/outcome">>
@@ -154,6 +165,11 @@ export type RecentObservationsQuery = QueryOf<Get<"/v1/observations/stations/{st
 export type RecentObservationsResponse = OkOf<Get<"/v1/observations/stations/{stationId}/recent">>
 
 // ── public / research (no-auth) ───────────────────────────────────────────
+/** Catalog-derived base activity list (`slug` / `display_name` / `family`) —
+ *  the canonical set a caller can pass as `activity`. `GET /v1/profiles` is a
+ *  server-side alias for the same response. */
+export type ActivitiesResponse = OkOf<Get<"/v1/activities">>
+
 export type SustainabilityIndexQuery = QueryOf<Get<"/v1/public/sustainability-index">>
 export type SustainabilityIndexResponse = OkOf<Get<"/v1/public/sustainability-index">>
 
@@ -224,3 +240,6 @@ export interface DeleteUserDataResult {
 
 // Re-export the raw generated surface for advanced consumers.
 export type { components, paths } from "./generated/api.ts"
+
+// Re-export the typed activity-slug union (open set — see the source file).
+export type { ActivitySlug, KnownActivitySlug } from "./generated/activitySlugs.ts"
