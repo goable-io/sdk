@@ -5068,53 +5068,22 @@
       "get": {
         "summary": "Public Goable Sustainability Index (no auth, JSON-LD)",
         "security": [],
-        "description": "Public JSON-LD artefact of the Goable Sustainability Index (CC BY 4.0). Session-weighted 0-100 index across zones plus per-zone breakdowns. Governed by k-anonymity (default k≥10) + a 90-day publication lag in the underlying reader — no additional privacy work required for the public surface. Content-Type: application/ld+json. Edge-cached for 5 minutes.",
+        "description": "Public JSON-LD artefact of the Goable Sustainability Index (CC BY 4.0) — the LATEST PUBLISHED, frozen, signed annual report (or the report for `?year=N`). This is a stored, immutable document, not a live on-demand aggregate: no unpublished figure is ever served here. When nothing has been published yet (for the requested year, or at all), the response is the same document shape with zero zones/sessions and `publication: null` — the honest empty-state. Content-Type: application/ld+json. Edge-cached for 5 minutes.",
         "parameters": [
           {
-            "name": "from",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "description": "Inclusive start of the reporting period."
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "description": "Exclusive end of the reporting period."
-          },
-          {
-            "name": "zoneKm",
-            "in": "query",
-            "schema": {
-              "type": "number",
-              "exclusiveMinimum": 0,
-              "maximum": 500
-            },
-            "description": "Zone grid cell edge length in km (default: reader-configured)."
-          },
-          {
-            "name": "k",
+            "name": "year",
             "in": "query",
             "schema": {
               "type": "integer",
-              "minimum": 2,
-              "maximum": 1000,
-              "default": 10
+              "minimum": 2000,
+              "maximum": 2100
             },
-            "description": "k-anonymity threshold: zones with fewer than k sessions are suppressed."
+            "description": "Report year. Omit to get the most recently published year."
           }
         ],
         "responses": {
           "200": {
-            "description": "Sustainability Index document (JSON-LD)",
+            "description": "Sustainability Index document (JSON-LD), with publication metadata",
             "content": {
               "application/ld+json": {
                 "schema": {
@@ -5129,7 +5098,8 @@
                     "overall",
                     "zones",
                     "license",
-                    "attribution"
+                    "attribution",
+                    "publication"
                   ],
                   "properties": {
                     "@context": {
@@ -5322,6 +5292,44 @@
                     },
                     "attribution": {
                       "type": "string"
+                    },
+                    "publication": {
+                      "description": "Signing/publication metadata for the frozen report. null when no report has been published for this period (the honest empty-state) — every other field above is then a zero-data placeholder, not a real figure.",
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "year",
+                            "revision",
+                            "publishedAt",
+                            "signedBy",
+                            "methodologyVersion"
+                          ],
+                          "properties": {
+                            "year": {
+                              "type": "integer"
+                            },
+                            "revision": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "publishedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "signedBy": {
+                              "type": "string"
+                            },
+                            "methodologyVersion": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
                     }
                   }
                 }
@@ -5339,7 +5347,7 @@
             }
           },
           "503": {
-            "description": "Sustainability index reader not wired",
+            "description": "Sustainability index publication store not wired",
             "content": {
               "application/json": {
                 "schema": {
@@ -5661,6 +5669,45 @@
                       "unknown"
                     ],
                     "description": "Structured cause when a session did not run as planned. Only 'weather' and 'safety' outcomes count as evidence against the forecast score and feed weather-suitability calibration; 'operational', 'customer_demand', 'mechanical', and 'unknown' are treated as business facts and excluded."
+                  },
+                  "group_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Participants in the session. Captured and disclosed (e.g. average group size) but held out of the sustainability composite pending a site carrying-capacity baseline."
+                  },
+                  "facility_renewable_energy": {
+                    "type": "string",
+                    "enum": [
+                      "renewable",
+                      "mixed",
+                      "grid",
+                      "unknown"
+                    ],
+                    "description": "Operator annual declaration of the facility's energy source."
+                  },
+                  "access_mode": {
+                    "type": "string",
+                    "enum": [
+                      "foot",
+                      "bike",
+                      "public_transport",
+                      "car",
+                      "boat",
+                      "flight",
+                      "mixed",
+                      "unknown"
+                    ],
+                    "description": "How participants got to the session. Highest-materiality but lowest-substantiability signal (an operator estimate) — reported as an estimate, not a measured value."
+                  },
+                  "equipment_provenance": {
+                    "type": "string",
+                    "enum": [
+                      "rental_shared",
+                      "owned",
+                      "mixed",
+                      "unknown"
+                    ],
+                    "description": "Whether the equipment used was rented/shared, owned, or a mix (circularity proxy)."
                   },
                   "batch_ref": {
                     "type": "string",

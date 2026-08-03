@@ -2645,19 +2645,13 @@ export interface paths {
         };
         /**
          * Public Goable Sustainability Index (no auth, JSON-LD)
-         * @description Public JSON-LD artefact of the Goable Sustainability Index (CC BY 4.0). Session-weighted 0-100 index across zones plus per-zone breakdowns. Governed by k-anonymity (default k≥10) + a 90-day publication lag in the underlying reader — no additional privacy work required for the public surface. Content-Type: application/ld+json. Edge-cached for 5 minutes.
+         * @description Public JSON-LD artefact of the Goable Sustainability Index (CC BY 4.0) — the LATEST PUBLISHED, frozen, signed annual report (or the report for `?year=N`). This is a stored, immutable document, not a live on-demand aggregate: no unpublished figure is ever served here. When nothing has been published yet (for the requested year, or at all), the response is the same document shape with zero zones/sessions and `publication: null` — the honest empty-state. Content-Type: application/ld+json. Edge-cached for 5 minutes.
          */
         get: {
             parameters: {
-                query: {
-                    /** @description Inclusive start of the reporting period. */
-                    from: string;
-                    /** @description Exclusive end of the reporting period. */
-                    to: string;
-                    /** @description Zone grid cell edge length in km (default: reader-configured). */
-                    zoneKm?: number;
-                    /** @description k-anonymity threshold: zones with fewer than k sessions are suppressed. */
-                    k?: number;
+                query?: {
+                    /** @description Report year. Omit to get the most recently published year. */
+                    year?: number;
                 };
                 header?: never;
                 path?: never;
@@ -2665,7 +2659,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Sustainability Index document (JSON-LD) */
+                /** @description Sustainability Index document (JSON-LD), with publication metadata */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2715,6 +2709,15 @@ export interface paths {
                             /** @enum {string} */
                             license: "CC BY 4.0";
                             attribution: string;
+                            /** @description Signing/publication metadata for the frozen report. null when no report has been published for this period (the honest empty-state) — every other field above is then a zero-data placeholder, not a real figure. */
+                            publication: null | {
+                                year: number;
+                                revision: number;
+                                /** Format: date-time */
+                                publishedAt: string;
+                                signedBy: string;
+                                methodologyVersion: string;
+                            };
                         } & {
                             [key: string]: unknown;
                         };
@@ -2729,7 +2732,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Sustainability index reader not wired */
+                /** @description Sustainability index publication store not wired */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2985,6 +2988,23 @@ export interface paths {
                          * @enum {string}
                          */
                         reason_category?: "weather" | "operational" | "customer_demand" | "safety" | "mechanical" | "unknown";
+                        /** @description Participants in the session. Captured and disclosed (e.g. average group size) but held out of the sustainability composite pending a site carrying-capacity baseline. */
+                        group_size?: number;
+                        /**
+                         * @description Operator annual declaration of the facility's energy source.
+                         * @enum {string}
+                         */
+                        facility_renewable_energy?: "renewable" | "mixed" | "grid" | "unknown";
+                        /**
+                         * @description How participants got to the session. Highest-materiality but lowest-substantiability signal (an operator estimate) — reported as an estimate, not a measured value.
+                         * @enum {string}
+                         */
+                        access_mode?: "foot" | "bike" | "public_transport" | "car" | "boat" | "flight" | "mixed" | "unknown";
+                        /**
+                         * @description Whether the equipment used was rented/shared, owned, or a mix (circularity proxy).
+                         * @enum {string}
+                         */
+                        equipment_provenance?: "rental_shared" | "owned" | "mixed" | "unknown";
                         /** @description Client-supplied lot / ingestion-run handle. Tag a batch of outcomes with a shared value so a later POST /v1/outcomes/void can recall exactly that lot if it was mislabelled. */
                         batch_ref?: string;
                     };
