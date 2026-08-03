@@ -6,6 +6,45 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.8.0] — 2026-08-03
+
+Contract re-sync adding a dedicated feasibility-gate verdict + score-basis
+discriminator, plus activity discovery: a new `GET /v1/activities` endpoint
+and a typed (but open) `activity` slug union across the SDK's activity-taking
+requests. Additive only — existing methods and types are unchanged.
+
+### Added
+
+- **`client.activities()`.** New `GET /v1/activities` (public, no API key
+  required): the canonical, catalog-derived list of base activity slugs
+  (`slug` / `display_name` / `family`) a caller can pass as `activity`.
+  `GET /v1/profiles` is a server-side alias for the same response.
+- **Typed `activity` slugs.** `ActivitySlug` is a new exported type — an
+  **open union** of `KnownActivitySlug` (autocomplete over
+  `KNOWN_ACTIVITY_SLUGS`, a committed snapshot of the catalog's current base
+  activities) plus `| (string & {})`. Applied to the `activity` field on
+  `score`, `scoreSeries`, `scoreHistorical`, `explainCounterfactual`,
+  `decision`, `briefing`, `scoreDifficulty`, and `recommendSpot` requests. It
+  stays open by design: a brand-new catalog activity is never a compile
+  error just because the shipped snapshot hasn't caught up — call
+  `client.activities()` for the live, authoritative list. `KNOWN_ACTIVITY_SLUGS`
+  is refreshed from the live catalog by `scripts/genSlugs.ts` (run in the
+  `refresh-openapi` workflow), independent of the OpenAPI contract sync.
+- **`not_feasible` verdict.** A score of 0 from a FEASIBILITY gate (e.g. no
+  navigable route, no lift service) — not dangerous, just not doable — now
+  reads `verdict: "not_feasible"` instead of `"unsafe"`. `"unsafe"` is now
+  reserved for a genuine safety gate (lightning, AQI, etc.).
+- **`scoreBasis` discriminator.** `ScoreResponse` (and the equivalent series /
+  historical / difficulty responses) now carries
+  `scoreBasis: "forecast" | "gated" | "no_data"`, exported as the `ScoreBasis`
+  type. `"gated"` distinguishes a hard-gate 0 from a genuine low forecast
+  score, and now carries a full `breakdown` + `physics` so a no-go response
+  shows *why* rather than coming back empty.
+- **`did_you_mean` / `valid_slugs` on `ACTIVITY_NOT_FOUND`.** The error
+  `detail` for an unrecognised activity now includes the full list of valid
+  slugs plus a fuzzy `did_you_mean` suggestion when one catalog slug is a
+  close match.
+
 ## [0.7.0] — 2026-08-02
 
 Contract re-sync adding the outcomes recall + reason-attribution surface, plus

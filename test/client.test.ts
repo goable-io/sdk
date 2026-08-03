@@ -6,6 +6,7 @@ import {
   GoableClient,
   GoableNetworkError,
 } from "../src/index.js"
+import type { ScoreRequest } from "../src/index.js"
 
 interface Call {
   url: string
@@ -623,6 +624,42 @@ describe("timeout", () => {
     vi.useRealTimers()
   })
 })
+
+describe("v0.8.0 surface — activities() + typed activity slug", () => {
+  test("activities() issues GET /v1/activities and returns the parsed body", async () => {
+    const body = {
+      activities: [{ slug: "kitesurfing", display_name: "Kitesurfing", family: "water" }],
+    }
+    const { fetch, calls } = mockFetch(() => ({ body }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    const res = await c.activities()
+    expect(calls[0]!.method).toBe("GET")
+    expect(calls[0]!.url).toBe("https://x/v1/activities")
+    expect(res).toEqual(body)
+  })
+
+  test("activities() still sends the X-Goable-Key header (public endpoint, key sent anyway)", async () => {
+    const { fetch, calls } = mockFetch(() => ({ body: { activities: [] } }))
+    const c = new GoableClient({ apiKey: KEY, fetch, baseUrl: "https://x" })
+    await c.activities()
+    expect(calls[0]!.headers!["X-Goable-Key"]).toBe(KEY)
+  })
+})
+
+// Compile-time only — no runtime assertion needed. `ActivitySlug` is an OPEN
+// union: both a slug from the shipped KNOWN_ACTIVITY_SLUGS snapshot and an
+// arbitrary string (a brand-new catalog activity the snapshot doesn't know
+// about yet) must type-check as `activity` on ScoreRequest.
+const _knownActivityTypeChecks: ScoreRequest = {
+  activity: "kitesurfing",
+  location: { lat: 43.7, lng: 7.27 },
+}
+const _unknownActivityStillTypeChecks: ScoreRequest = {
+  activity: "some-future-activity",
+  location: { lat: 43.7, lng: 7.27 },
+}
+void _knownActivityTypeChecks
+void _unknownActivityStillTypeChecks
 
 describe("deleteUserData", () => {
   test("returns parsed receipt headers from a 204", async () => {

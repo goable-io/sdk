@@ -20,3 +20,4 @@ export {
   type ZodIssueLike,
 } from "./errors.ts"
 export type * from "./types.ts"
+export { KNOWN_ACTIVITY_SLUGS } from "./generated/activitySlugs.ts"

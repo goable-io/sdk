@@ -5,6 +5,7 @@
 
 import { GoableNetworkError, toApiError } from "./errors.ts"
 import type {
+  ActivitiesResponse,
   AdaptationReportRequest,
   AdaptationReportResponse,
   AuditExportQuery,
@@ -139,6 +140,14 @@ export class GoableClient {
 
   score(input: ScoreRequest): Promise<ScoreResponse> {
     return this.request<ScoreResponse>("POST", "/v1/score", input)
+  }
+
+  /** Discover the catalogue's base activity slugs (slug / display_name /
+   *  family) — the canonical list a caller can pass as `activity`. Public:
+   *  no API key required (the client still sends one if configured). Mirrors
+   *  the server's `GET /v1/profiles` alias. */
+  activities(): Promise<ActivitiesResponse> {
+    return this.request<ActivitiesResponse>("GET", "/v1/activities")
   }
 
   scoreSeries(input: ScoreSeriesRequest): Promise<ScoreSeriesResponse> {

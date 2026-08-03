@@ -40,6 +40,10 @@ jobs:
           curl -sSf "$SPEC_URL" -o openapi.json
           node scripts/normalizeSpec.mjs openapi.json
           pnpm gen
+          # Also refresh the committed activity-slug snapshot from the same
+          # live API (GET /v1/activities) — keeps ActivitySlug's autocomplete
+          # list current without a separate scheduled job.
+          pnpm gen:slugs
 
       - name: Verify freshness guard still passes
         run: pnpm test
@@ -59,3 +63,4 @@ jobs:
           add-paths: |
             openapi.json
             src/generated/api.ts
+            src/generated/activitySlugs.ts

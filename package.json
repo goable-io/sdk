@@ -1,6 +1,6 @@
 {
   "name": "@goable-io/sdk",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "TypeScript client for the Goable API — suitability scoring for outdoor activities.",
   "private": false,
   "type": "module",
@@ -52,6 +52,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "gen": "tsx scripts/gen.ts",
+    "gen:slugs": "tsx scripts/genSlugs.ts",
     "prepublishOnly": "tsc",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
