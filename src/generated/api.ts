@@ -3479,9 +3479,21 @@ export interface components {
         ScoreSeriesResponse: {
             series: ({
                 /** Format: date-time */
-                at?: string;
+                timestamp: string;
                 score: number;
                 verdict: components["schemas"]["Verdict"];
+                confidence: number;
+                /** @description Per-bucket scoring alerts (same shape as /v1/score and /v1/score-multi). A bucket forced to unsafe/0 carries its gate reason here — alerts[].kind = 'safety' | 'feasibility'. */
+                alerts: ({
+                    /** @enum {string} */
+                    level?: "info" | "warning" | "critical";
+                    code?: string;
+                    description?: string;
+                    /** @enum {string} */
+                    kind?: "safety" | "feasibility";
+                } & {
+                    [key: string]: unknown;
+                })[];
             } & {
                 [key: string]: unknown;
             })[];
