@@ -248,11 +248,14 @@
               "type": "object",
               "additionalProperties": true,
               "required": [
+                "timestamp",
                 "score",
-                "verdict"
+                "verdict",
+                "confidence",
+                "alerts"
               ],
               "properties": {
-                "at": {
+                "timestamp": {
                   "type": "string",
                   "format": "date-time"
                 },
@@ -261,6 +264,40 @@
                 },
                 "verdict": {
                   "$ref": "#/components/schemas/Verdict"
+                },
+                "confidence": {
+                  "type": "number"
+                },
+                "alerts": {
+                  "type": "array",
+                  "description": "Per-bucket scoring alerts (same shape as /v1/score and /v1/score-multi). A bucket forced to unsafe/0 carries its gate reason here — alerts[].kind = 'safety' | 'feasibility'.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                      "level": {
+                        "type": "string",
+                        "enum": [
+                          "info",
+                          "warning",
+                          "critical"
+                        ]
+                      },
+                      "code": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "safety",
+                          "feasibility"
+                        ]
+                      }
+                    }
+                  }
                 }
               }
             }

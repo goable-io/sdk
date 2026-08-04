@@ -6,6 +6,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.9.0] — 2026-08-04
+
+**Breaking:** `/v1/score/series` bucket shape changed to match the current
+API contract.
+
+### Changed
+
+- **score-series bucket:** `at` → `timestamp`, add `confidence` + `alerts`
+  (breaking). Each `ScoreSeriesResponse["series"]` entry is now
+  `{ timestamp, score, verdict, confidence, alerts }` instead of
+  `{ at, score, verdict }`. `alerts` mirrors the per-bucket alerts shape
+  already used by `/v1/score/multi`. Update any code reading
+  `bucket.at` to `bucket.timestamp`.
+
 ## [0.8.0] — 2026-08-03
 
 Contract re-sync adding a dedicated feasibility-gate verdict + score-basis
