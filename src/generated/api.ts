@@ -3424,6 +3424,11 @@ export interface components {
         /** @enum {string} */
         Verdict: "unsafe" | "not_feasible" | "poor" | "marginal" | "fair" | "favorable" | "excellent";
         ScoreResponse: {
+            /**
+             * Format: uuid
+             * @description Stable id for this scored session (the `scoring_audit_log` row). Returned on every /v1/score response. Pass it back as `audit_log_id` on POST /v1/outcomes (or as the `:id` on POST /v1/score/:id/outcome) to link the observed outcome to this exact forecast, closing the calibration loop.
+             */
+            session_id: string;
             score: number;
             verdict: components["schemas"]["Verdict"];
             confidence: number;
@@ -3434,7 +3439,9 @@ export interface components {
             scoreBasis: "forecast" | "gated" | "no_data";
             breakdown: ({
                 name?: string;
+                /** @description The raw physical reading for this dimension, in its native unit — this is the operational number to show an operator. Units are per-dimension: wind is KNOTS (e.g. `wind_speed`), wave height METRES (`wave` / `wave_height`), wave period SECONDS (`wave_period`), temperature °C (`air_temp_comfort`, `water_temp`), visibility KM (`visibility`), direction DEGREES. (The engine's full derived `summary` block is intentionally not returned; read operational numbers from here.) */
                 value?: number;
+                /** @description 0-1 desirability of `value` for this activity (the profile curve's output) — good for a per-dimension green/amber/red indicator. Distinct from `value`: `value` is the measurement, `suitability` is how good that measurement is. */
                 suitability?: number;
                 weight?: number;
                 /** @description This dimension's weighted contribution to `score`. Zeroed on a `scoreBasis: "gated"` response — nothing contributed to a gated 0 (Σcontribution = 0 = score) — even though `suitability`/`hasData` above still reflect the real conditions. */
@@ -3451,7 +3458,9 @@ export interface components {
             alerts: ({
                 /** @enum {string} */
                 level?: "info" | "warning" | "critical";
+                /** @description Stable, machine-readable alert identifier — the field to key a UI, an icon map, or a localized message off (NOT `description`, which is English debug prose and is not localized). Deliberately an open string, not a closed enum: engine codes are fixed in source (NO_DATA, MISSING_DIMENSION_DATA, SAFETY_GATE_UNEVALUATED, SCORE_FLOORED, SAFETY_DATA_UNAVAILABLE, FEASIBILITY_GATE_OBSERVATION_OVERRIDE, and the observed-safety codes ACTIVE_THUNDERSTORM_RISK / ELEVATED_LIGHTNING_RISK / AQI_HAZARDOUS / AQI_VERY_UNHEALTHY / AQI_UNHEALTHY_FOR_ENDURANCE), while gate-trip codes come from the activity profile's catalog and are stable within a profiles-catalog major version (e.g. water sports: NO_RIDABLE_WIND, GALE_FORCE_WIND, HEAVY_RAIN, LOW_VISIBILITY, FLAT_NO_SURF, EXTREME_SURF, HIGH_WIND, STRONG_WIND, RIP_CURRENT_HAZARD, HIGH_SEAS, POOR_SURFACE_VISIBILITY, POOR_UNDERWATER_VISIBILITY, STRONG_CURRENT_UNSAFE). Map known codes; keep a generic fallback for codes added by a future catalog version. */
                 code?: string;
+                /** @description Human-readable English explanation of the alert. Debug / fallback copy only — it is NOT localized. Localize your UI off `code`, not this field. */
                 description?: string;
                 /**
                  * @description On a gate-trip alert, why the activity is a no-go: 'safety' = dangerous conditions; 'feasibility' = impossible at any skill level (e.g. no rideable wind). Absent on non-gate alerts. Present from catalog v2.4.0.
