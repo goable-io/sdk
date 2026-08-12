@@ -6,6 +6,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.11.0] — 2026-08-12
+
+Contract re-sync to the live API (PR #69, deployed). Additive; existing code keeps working.
+
+### Added
+
+- Full stable `Error` code enum in the generated types, including
+  `SESSION_NOT_FOUND` (404 from `POST /v1/score/:id/outcome` when the id is not
+  a scored session) and `AUDIT_LOG_NOT_FOUND` (404 from `POST /v1/outcomes` when
+  `audit_log_id` does not resolve to a scored session).
+- `ScoreSeriesResponse` now types `session_id`, `profile_slug`, and
+  `granularity` (all always-returned); `ScoreMultiResponse.session_id` is
+  required. Series and multi session ids are correlation ids only, not linkable
+  as `audit_log_id` (only single `POST /v1/score` ids close the calibration loop).
+
+### Changed
+
+- `reportOutcome` docstring: the write is durable and synchronous (not queued),
+  and an unknown session id is rejected `404 SESSION_NOT_FOUND`.
+- Confidence is now horizon-decaying (near-term baseline around 0.55 to 0.62,
+  higher for a nowcast, lower far out) rather than near-flat. No type change;
+  spec description synced.
+
+### Note
+
+- `voidOutcomes()` recall and the `reasonCategory` / `batchRef` / idempotency
+  surface shipped earlier and are unchanged here.
+
 ## [0.10.0] — 2026-08-11
 
 ### Added

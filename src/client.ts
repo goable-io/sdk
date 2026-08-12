@@ -208,8 +208,11 @@ export class GoableClient {
   }
 
   /** Close the calibration loop: report the observed outcome of a scored
-   *  session. Requires the `outcomes:write` scope. Pass `idempotencyKey` so a
-   *  retry after a network timeout can't record the same outcome twice. */
+   *  session. The write is durable and synchronous; an unknown or non-linkable
+   *  session id is rejected `404 SESSION_NOT_FOUND` (only single `POST /v1/score`
+   *  session ids are linkable — not series/multi). Requires the `outcomes:write`
+   *  scope. Pass `idempotencyKey` so a retry after a network timeout can't
+   *  record the same outcome twice. */
   reportOutcome(
     sessionId: string,
     input: ReportOutcomeRequest,

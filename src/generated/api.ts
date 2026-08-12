@@ -143,7 +143,7 @@ export interface paths {
                         "application/json": components["schemas"]["ScoreResponse"];
                     };
                 };
-                /** @description Plan upgrade required (ensemble or rider_skill_level on Free/Starter) */
+                /** @description PAYMENT_REQUIRED — a premium capability (`ensemble` or `rider_skill_level`) was requested on a Free/Starter plan. */
                 402: {
                     headers: {
                         [name: string]: unknown;
@@ -152,7 +152,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description No profile for activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
+                /** @description ACTIVITY_NOT_FOUND — no profile for the activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -161,7 +161,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
+                /** @description Validation error (`VALIDATION_ERROR`), or `FORECAST_HORIZON_EXCEEDED` when the requested window ends beyond the ~16-day forecast horizon (use POST /v1/score/historical or /v1/projections for longer ranges). */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -170,11 +170,20 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Daily rate limit (safety cap) exceeded for this endpoint + plan. */
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
                 429: {
                     headers: {
-                        /** @description Seconds until the daily rate-limit window resets. Present only on this 429 response. */
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
                         "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description INTERNAL_SERVER_ERROR — an upstream weather-provider fetch failed (or another unexpected error). A DependencyMissingError surfaces as 503 SERVICE_UNAVAILABLE instead. */
+                500: {
+                    headers: {
                         [name: string]: unknown;
                     };
                     content: {
@@ -322,13 +331,28 @@ export interface paths {
                 /** @description Per-step scores */
                 200: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["ScoreSeriesResponse"];
                     };
                 };
-                /** @description No profile for activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
+                /** @description PAYMENT_REQUIRED — `ensemble` was requested on a Free/Starter plan. */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description ACTIVITY_NOT_FOUND — no profile for the activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -337,9 +361,20 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error / window too large */
+                /** @description Validation error (`VALIDATION_ERROR`), or `WINDOW_TOO_LARGE` when the requested window exceeds the per-plan series span. */
                 422: {
                     headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
+                        "Retry-After"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -386,15 +421,41 @@ export interface paths {
                 /** @description Per-activity scores */
                 200: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["ScoreMultiResponse"];
                     };
                 };
-                /** @description Validation error / max activities exceeded */
+                /** @description PAYMENT_REQUIRED — `ensemble` was requested on a Free/Starter plan. */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error (`VALIDATION_ERROR`), or `MAX_ACTIVITIES_EXCEEDED` when the request lists more activities than the per-plan cap. */
                 422: {
                     headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
+                        "Retry-After"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -455,6 +516,12 @@ export interface paths {
                 /** @description Percentiles + exceedance + verdict frequency (per-entry confidenceDetail: historical) */
                 200: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -463,7 +530,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Requires Pro+ plan */
+                /** @description PAYMENT_REQUIRED — historical scoring requires a Pro or Scale plan. */
                 402: {
                     headers: {
                         [name: string]: unknown;
@@ -472,8 +539,37 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
+                /** @description ACTIVITY_NOT_FOUND — no profile for the requested activity. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error (`VALIDATION_ERROR`), `WINDOW_TOO_LARGE`, `INVALID_YEARS_RANGE`, or `MARINE_NOT_AVAILABLE` (marine data gap when `failOnMarineGap` is set). */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description ARCHIVE_UNAVAILABLE — the ERA5 historical archive provider is not configured / reachable on this deployment. */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -541,6 +637,12 @@ export interface paths {
                 /** @description Portfolio score + per-spot contributions */
                 200: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -549,7 +651,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Requires Pro+ plan */
+                /** @description PAYMENT_REQUIRED — portfolio scoring requires a Pro or Scale plan. */
                 402: {
                     headers: {
                         [name: string]: unknown;
@@ -558,8 +660,37 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Validation error */
+                /** @description ACTIVITY_NOT_FOUND — a spot references an activity with no profile. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error (`VALIDATION_ERROR`), `PORTFOLIO_TOO_LARGE` (more spots than the per-plan cap), or `INVALID_YEARS_RANGE`. */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description ARCHIVE_UNAVAILABLE — the ERA5 historical archive provider is not configured / reachable on this deployment. */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -613,6 +744,12 @@ export interface paths {
                 /** @description binding_constraint + marginal_sensitivities + best_window_24h + best_nearby_spots + optional natural_language */
                 200: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -621,7 +758,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description No profile for activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
+                /** @description NOT_FOUND / ACTIVITY_NOT_FOUND — no profile for the activity. `detail` carries `valid_slugs` (see GET /v1/activities) plus a fuzzy `did_you_mean` suggestion when one catalog slug is a close match. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -633,6 +770,17 @@ export interface paths {
                 /** @description Validation error */
                 422: {
                     headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
+                        "Retry-After"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -805,7 +953,16 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Validation error */
+                /** @description ACTIVITY_NOT_FOUND (no profile for the activity) or SESSION_NOT_FOUND (the supplied `session_id` matched no scored session for this tenant). */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error (`VALIDATION_ERROR`), or `SESSION_LOOKUP_UNAVAILABLE` when a `session_id` was supplied but session lookup is not wired on this deployment. */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -814,7 +971,16 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description No Anthropic key configured for this tenant */
+                /** @description LLM_BUDGET_EXCEEDED — the tenant's monthly LLM token budget is exhausted (distinct from the RATE_LIMITED daily/monthly request cap). */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description INTELLIGENCE_UNAVAILABLE — no Anthropic key is configured for this tenant (set one via PUT /v1/tenant/llm-key). */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -877,7 +1043,16 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Validation error */
+                /** @description ACTIVITY_NOT_FOUND — no profile for the requested activity. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error (`VALIDATION_ERROR`), or `MAX_BRIEFING_SLOTS_EXCEEDED` when the request lists more slots than allowed. */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -886,7 +1061,16 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description No Anthropic key configured for this tenant */
+                /** @description LLM_BUDGET_EXCEEDED — the tenant's monthly LLM token budget is exhausted (distinct from the RATE_LIMITED daily/monthly request cap). */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description INTELLIGENCE_UNAVAILABLE — no Anthropic key is configured for this tenant (set one via PUT /v1/tenant/llm-key). */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1757,7 +1941,7 @@ export interface paths {
         put?: never;
         /**
          * Report observed outcome for a scored session
-         * @description Close the calibration loop. Submit the actual outcome (ran/cancelled/no_show/rescheduled/note) of a /v1/score session. The calibration pipeline + forecast verification + drift monitor consume these. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't). Supports the optional `Idempotency-Key` header (see parameter description) so a client-side retry can't record the same outcome twice.
+         * @description Close the calibration loop for a specific scored session. Submit the actual outcome (ran/cancelled/no_show/rescheduled/note) of a /v1/score session. `{sessionId}` MUST be a `session_id` returned by a POST /v1/score response (i.e. a `scoring_audit_log` id); an unknown or cross-tenant id is rejected 404 (nothing is persisted). The write is SYNCHRONOUS and DURABLE: this endpoint routes through the SAME persist path as POST /v1/outcomes (the outcome row lands with `audit_log_id = {sessionId}`, joinable in the forecast-verification MV) and fires the same `outcome.created` webhook. It is NOT fire-and-forget and is NOT merely queued. The calibration pipeline + forecast verification + drift monitor consume these. Either endpoint works — use POST /v1/outcomes for un-sessioned or batch outcomes, this endpoint for an outcome tied to one specific scored session. Requires the `outcomes:write` scope (both live AND test keys carry it; a test key's outcomes persist and are listable but are quarantined — `is_test` — out of calibration). Supports the optional `Idempotency-Key` header (see parameter description) so a client-side retry can't record the same outcome twice. The `outcome.created` webhook payload for this path is identical to POST /v1/outcomes: it carries `auditLogId` (= {sessionId}), `occurredAt`, `activitySlug`, and `outcomeType` — there is no longer a bespoke `sessionId` key.
          */
         post: {
             parameters: {
@@ -1789,9 +1973,15 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Accepted (queued for the next calibration batch) */
+                /** @description Outcome persisted (synchronous + durable, written through the same path as POST /v1/outcomes with `audit_log_id = {sessionId}`; the `outcome.created` webhook has fired). Not a queued/deferred no-op. */
                 202: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -1809,7 +1999,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Session not found */
+                /** @description SESSION_NOT_FOUND — `{sessionId}` matches no scored session for this tenant (unknown id, or a cross-tenant / /v1/score/multi / /v1/score/series session_id, which never write an audit row and are not linkable). Nothing is persisted. */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1830,6 +2020,17 @@ export interface paths {
                 /** @description Validation error */
                 422: {
                     headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
+                        "Retry-After"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -1876,6 +2077,12 @@ export interface paths {
                 /** @description Per-dimension intrinsic difficulty curves for the resolved sub-spot */
                 200: {
                     headers: {
+                        /** @description Daily safety cap for this endpoint + plan (not the monthly billing quota). Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Limit"?: number;
+                        /** @description Requests remaining in the current UTC-midnight daily window. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Remaining"?: number;
+                        /** @description Unix timestamp (seconds) at which the daily window resets. Omitted on unlimited (Scale) plans. */
+                        "X-RateLimit-Reset"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -1899,7 +2106,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Requires Pro+ plan */
+                /** @description PLAN_UPGRADE_REQUIRED — the difficulty atlas is gated to Pro+ (the `requirePlanAtLeast('pro')` middleware). */
                 402: {
                     headers: {
                         [name: string]: unknown;
@@ -1908,7 +2115,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description No profile for activity, or no atlas row for the resolved sub-spot */
+                /** @description ACTIVITY_NOT_FOUND (no profile for the activity) or NOT_FOUND (the sub-spot resolved but no atlas row exists yet). */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1926,7 +2133,18 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Difficulty atlas reader not wired */
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
+                429: {
+                    headers: {
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description SERVICE_UNAVAILABLE — the difficulty atlas reader is not wired on this deployment. */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2056,10 +2274,10 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Daily rate limit (safety cap) exceeded for this endpoint + plan. */
+                /** @description Rate limit exceeded for this endpoint + plan (`RATE_LIMITED`). Covers both the daily safety cap and the monthly usage quota — `detail.scope` is `daily` or `monthly_quota`. `Retry-After` is set on both. */
                 429: {
                     headers: {
-                        /** @description Seconds until the daily rate-limit window resets. Present only on this 429 response. */
+                        /** @description Seconds until the exceeded rate-limit window resets. Present on every 429 from a rate-limited route — both the daily safety-cap 429 (resets at 00:00 UTC) and the monthly-quota 429 (resets at 00:00 UTC on the 1st of next month). `detail.scope` on the body distinguishes `daily` vs `monthly_quota`. */
                         "Retry-After"?: number;
                         [name: string]: unknown;
                     };
@@ -3050,7 +3268,7 @@ export interface paths {
         put?: never;
         /**
          * Report a standalone activity outcome
-         * @description Submit an observed outcome for an activity session not tied to a specific /v1/score call — the operator-reported behavioural signal behind the calibration + research datasets. For an outcome linked to a specific scored session, use POST /v1/score/{sessionId}/outcome instead. Requires the `outcomes:write` scope (live keys carry it by default; test keys don't). Supports the optional `Idempotency-Key` header (see parameter description) so a retried batch submission records each outcome exactly once.
+         * @description Submit an observed outcome — the operator-reported behavioural signal behind the calibration + research datasets. The write is SYNCHRONOUS and DURABLE (persisted before the 202 returns, then the `outcome.created` webhook fires). Use this endpoint for un-sessioned or batch outcomes; for an outcome tied to one specific scored session, POST /v1/score/{sessionId}/outcome is equivalent and derives the link for you. Either endpoint persists through the same path. To link an outcome here to a scored session, pass its POST /v1/score `session_id` as `audit_log_id`. Requires the `outcomes:write` scope (both live AND test keys carry it; a test key's outcomes persist and are listable but are quarantined — `is_test` — out of calibration). Supports the optional `Idempotency-Key` header (see parameter description) so a retried batch submission records each outcome exactly once.
          */
         post: {
             parameters: {
@@ -3072,7 +3290,7 @@ export interface paths {
                         outcome_type: "ran" | "cancelled" | "rescheduled" | "no_show" | "note";
                         /** @description Optional catalogue sub-spot slug. */
                         spot_id?: string;
-                        /** @description Optional link back to a scoring_audit_log row. */
+                        /** @description Optional link back to a scored session — pass a `session_id` from a POST /v1/score response. It is verified against `scoring_audit_log` before persist: an id resolving to no scored session (e.g. a /v1/score/multi or /v1/score/series session_id, which never write an audit row) is rejected 404 AUDIT_LOG_NOT_FOUND rather than silently persisted as an orphan the verification MV drops. Omit it for an un-sessioned outcome. */
                         audit_log_id?: string;
                         detail?: {
                             [key: string]: unknown;
@@ -3110,7 +3328,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Accepted (queued for the next calibration batch) */
+                /** @description Outcome persisted (synchronous + durable; the `outcome.created` webhook has fired). Not a queued/deferred no-op. */
                 202: {
                     headers: {
                         [name: string]: unknown;
@@ -3123,6 +3341,15 @@ export interface paths {
                 };
                 /** @description Missing scope: outcomes:write */
                 403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description AUDIT_LOG_NOT_FOUND — the supplied `audit_log_id` resolves to no scored session for this tenant (unknown id, or a non-linkable /v1/score/multi or /v1/score/series session_id). Rejected rather than persisted as an orphan. */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3411,8 +3638,16 @@ export interface components {
             to: string;
         };
         Error: {
-            /** @description Machine-readable error code */
-            error: string;
+            /**
+             * @description Machine-readable error code — the stable field to switch on (the human `message` is not stable and not localized). The enum is the canonical registry from the API's `httpErrors.ts`; a client should still keep a generic fallback for a code added by a future release.
+             *
+             *     The three 402 'upgrade needed' codes are distinct and NOT interchangeable:
+             *     - `PAYMENT_REQUIRED` — a specific premium capability was requested on a plan that doesn't include it (e.g. ensemble scoring, or historical/portfolio scoring, on Free/Starter). Emitted inline by /v1/score, /v1/score/series, /v1/score/multi, /v1/score/historical, /v1/score/portfolio, /v1/underwriting/*, /v1/projections.
+             *     - `PLAN_UPGRADE_REQUIRED` — a whole endpoint is gated below a minimum plan tier (the `requirePlanAtLeast` middleware). Emitted by e.g. /v1/score/difficulty and other Pro+/Scale-gated routes.
+             *     - `PLAN_LIMIT_EXCEEDED` — the plan is allowed but a per-plan numeric cap was exceeded (e.g. recommend radiusKm / topK). Emitted by /v1/recommend-spot; carries `detail.maxKm` / `detail.maxTopK`.
+             * @enum {string}
+             */
+            error: "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "RATE_LIMITED" | "PLAN_UPGRADE_REQUIRED" | "PLAN_LIMIT_EXCEEDED" | "PAYMENT_REQUIRED" | "SESSION_NOT_FOUND" | "AUDIT_LOG_NOT_FOUND" | "ACTIVITY_NOT_FOUND" | "API_KEY_NOT_FOUND" | "TENANT_NOT_FOUND" | "PAID_PLAN_REQUIRES_STRIPE_CUSTOMER" | "CUSTOM_TENANT_STRIPE_CONFLICT" | "STRIPE_CUSTOMER_TAKEN" | "UNKNOWN_SCOPES" | "SESSION_LOOKUP_UNAVAILABLE" | "MAX_BRIEFING_SLOTS_EXCEEDED" | "OUT_OF_EDGE_CASE_RANGE" | "LLM_BUDGET_EXCEEDED" | "LLM_KEY_INVALID" | "WINDOW_TOO_LARGE" | "FORECAST_HORIZON_EXCEEDED" | "PORTFOLIO_TOO_LARGE" | "MAX_ACTIVITIES_EXCEEDED" | "ARCHIVE_UNAVAILABLE" | "INVALID_YEARS_RANGE" | "MARINE_NOT_AVAILABLE" | "INVALID_TRIGGER" | "QUOTE_NOT_FOUND" | "QUOTE_EXPIRED" | "QUOTE_ALREADY_BOUND" | "POLICY_NOT_FOUND" | "POLICY_STATE_TRANSITION" | "POLICY_STATE" | "QUOTE_NOT_ISSUABLE" | "CATALOG_DRIFT" | "DRIFT_ACTIVE" | "HISTORICAL_UNAVAILABLE" | "CLIMATE_UNAVAILABLE" | "PROJECTION_UNAVAILABLE" | "WEBHOOK_INVALID_SIGNATURE" | "SPOT_NOT_PRECOMPUTED" | "PAYLOAD_TOO_LARGE" | "IDEMPOTENCY_KEY_CONFLICT" | "INTERNAL_SERVER_ERROR" | "SERVICE_UNAVAILABLE" | "INTELLIGENCE_UNAVAILABLE" | "ADMIN_BOOTSTRAP_DISABLED" | "PERSISTENCE_UNAVAILABLE";
             message?: string;
             issues?: {
                 [key: string]: unknown;
@@ -3431,6 +3666,15 @@ export interface components {
             session_id: string;
             score: number;
             verdict: components["schemas"]["Verdict"];
+            /**
+             * @description How much to trust this `score` — a [0,1] multiplicative product of `forecast_skill` × `provider_agreement` × `profile_maturity` × `hierarchical_calibration` × `coverage` (see `confidenceDetail` for the individual factors). It is HORIZON- and CALIBRATION-sensitive:
+             *
+             *     - `forecast_skill` now DECAYS with forecast lead time (the gap between issuance and the scored target time), the way operational NWP skill degrades: nowcast ≈ 0.90, ~0.78 at 24h, ~0.69 at 72h, ~0.60 at 7 days, ~0.51 at the ~16-day forecast limit. A near-term verdict therefore carries HIGHER confidence than a far-out one for the same spot. (This is a cold-start prior keyed on lead time, NOT yet a measurement of per-stratum skill — it is superseded factor-for-factor once measured skill is wired.)
+             *     - `provider_agreement` defaults to 1.0 for the single-provider case: there is no penalty for the mere absence of a second opinion. A value < 1.0 appears only when ≥2 consensus constituents actually returned samples and diverged.
+             *     - `profile_maturity` reflects catalog maturity (provisional 0.75 → reviewed 0.85 → calibrated 0.95) and RISES as a profile is outcome-calibrated.
+             *
+             *     NOTE — intentional output shift: because `forecast_skill` decays with horizon and the cold-start factors were raised, `confidence` values differ from earlier releases. A near-term score now sits around ~0.55–0.62 (not the old ~0.41 flat baseline), and far-out scores read lower than near-term ones for the same location. This supersedes the previous documentation that described confidence as flat / independent of horizon / non-decaying. If you display or threshold on `confidence`, re-check your thresholds.
+             */
             confidence: number;
             /**
              * @description Explicit discriminator for why `score`/`verdict` came out the way they did. 'forecast' = the normal path, every profile gate passed. 'gated' = a hard gate (safety or feasibility) tripped — `score` is forced to 0, but `breakdown`/`physics` still carry the real per-dimension conditions (each breakdown entry's `contribution` is zeroed, since nothing contributed to the gated 0, while `suitability`/`hasData` and the physics values stay populated) so a no-go response shows WHY. 'no_data' = no weather samples were available at all, so `breakdown`/`physics` are genuinely empty. Do not infer gate/no-data from `breakdown` emptiness — a gate trip populates `breakdown` too; read this field instead.
@@ -3486,6 +3730,18 @@ export interface components {
             [key: string]: unknown;
         };
         ScoreSeriesResponse: {
+            /**
+             * Format: uuid
+             * @description Correlation id for this time-series call. Always returned. NOTE: like /v1/score/multi and unlike POST /v1/score, this is NOT linkable — /v1/score/series does not write a `scoring_audit_log` row, so passing it as `audit_log_id` on POST /v1/outcomes is rejected 404. Only single POST /v1/score session_ids close the calibration loop.
+             */
+            session_id: string;
+            /** @description Resolved catalog profile slug for the requested activity. Always returned. */
+            profile_slug: string;
+            /**
+             * @description Bucket granularity used for the series (defaults to `hourly` when the request omits it). Always returned.
+             * @enum {string}
+             */
+            granularity: "hourly" | "3-hourly" | "daily";
             series: ({
                 /** Format: date-time */
                 timestamp: string;
@@ -3510,8 +3766,11 @@ export interface components {
             [key: string]: unknown;
         };
         ScoreMultiResponse: {
-            /** Format: uuid */
-            session_id?: string;
+            /**
+             * Format: uuid
+             * @description Correlation id for this multi-activity call. Always returned. NOTE: unlike a POST /v1/score `session_id`, this is NOT linkable — /v1/score/multi does not write a `scoring_audit_log` row, so passing it as `audit_log_id` on POST /v1/outcomes is rejected 404. Only single POST /v1/score session_ids close the calibration loop.
+             */
+            session_id: string;
             location?: components["schemas"]["GeoPoint"];
             results: ({
                 activity: string;
@@ -3598,8 +3857,11 @@ export interface components {
              * @enum {string}
              */
             mode: "forecast";
+            /** @description [0,1] skill factor in the confidence fold. It now DECAYS with forecast lead time (nowcast ≈ 0.90, ~0.78 at 24h, ~0.69 at 72h, ~0.60 at 7 days, ~0.51 at the ~16-day limit) rather than being flat, so a near-term bucket scores higher than a far-out one. This is a cold-start prior keyed on lead time, not yet a measurement of per-stratum skill; it is replaced factor-for-factor when measured skill is available. */
             forecast_skill: number;
+            /** @description [0,1] agreement across consensus constituents. Defaults to 1.0 for the single-provider (or unmeasured) case — no penalty for the absence of a second opinion; < 1.0 only when ≥2 constituents returned samples and diverged. */
             provider_agreement: number;
+            /** @description [0,1] catalog-maturity factor: provisional 0.75 → reviewed 0.85 → calibrated 0.95. RISES as the activity profile is outcome-calibrated. */
             profile_maturity: number;
             hierarchical_calibration: number;
             calibration_provenance?: components["schemas"]["CalibrationProvenanceSummary"];
