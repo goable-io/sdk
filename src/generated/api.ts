@@ -3707,10 +3707,12 @@ export interface components {
                 /** @description Human-readable English explanation of the alert. Debug / fallback copy only — it is NOT localized. Localize your UI off `code`, not this field. */
                 description?: string;
                 /**
-                 * @description On a gate-trip alert, why the activity is a no-go: 'safety' = dangerous conditions; 'feasibility' = impossible at any skill level (e.g. no rideable wind). Absent on non-gate alerts. Present from catalog v2.4.0.
+                 * @description Why this alert matters: 'safety' = a danger dimension; 'feasibility' = impossible at any skill level (e.g. no rideable wind). On a gate-trip (critical) alert it explains the no-go. Also present on the safety-advisory warnings SAFETY_GATE_UNEVALUATED and SAFETY_DATA_UNAVAILABLE (always 'safety'), so a consumer can treat 'a safety check did not run' distinctly from an ordinary data gap. Absent on non-safety informational alerts. Present from catalog v2.4.0 (gate trips) / contract v0.5 (safety advisories).
                  * @enum {string}
                  */
                 kind?: "safety" | "feasibility";
+                /** @description Machine-readable slug for the specific hazard, gate, or dimension this alert is about — the field to disambiguate two alerts that share the same `code`. Two SAFETY_DATA_UNAVAILABLE warnings on one response carry subject 'lightning' and 'air_quality' respectively, so a consumer can tell which safety gate went unevaluated without parsing the English `description`. On a gate-trip alert it is the gate's metric name (e.g. 'wind_speed_kn'); on the consolidated SAFETY_GATE_UNEVALUATED advisory it is the comma-joined metric slug(s). Open string, not a closed enum — new hazards/metrics add new values. Present from contract v0.5. */
+                subject?: string;
             } & {
                 [key: string]: unknown;
             })[];
@@ -3748,7 +3750,7 @@ export interface components {
                 score: number;
                 verdict: components["schemas"]["Verdict"];
                 confidence: number;
-                /** @description Per-bucket scoring alerts (same shape as /v1/score and /v1/score-multi). A bucket forced to unsafe/0 carries its gate reason here — alerts[].kind = 'safety' | 'feasibility'. */
+                /** @description Per-bucket scoring alerts (same shape as /v1/score and /v1/score-multi). A bucket forced to unsafe/0 carries its gate reason here — alerts[].kind = 'safety' | 'feasibility'; alerts[].subject disambiguates same-`code` alerts (e.g. 'lightning' vs 'air_quality'). */
                 alerts: ({
                     /** @enum {string} */
                     level?: "info" | "warning" | "critical";
@@ -3756,6 +3758,7 @@ export interface components {
                     description?: string;
                     /** @enum {string} */
                     kind?: "safety" | "feasibility";
+                    subject?: string;
                 } & {
                     [key: string]: unknown;
                 })[];
@@ -3794,7 +3797,7 @@ export interface components {
                 distribution?: {
                     [key: string]: unknown;
                 };
-                /** @description Per-activity scoring alerts (same shape as /v1/score). verdict = 'not_feasible' already distinguishes an impossible-but-not-dangerous read (e.g. no rideable wind) from 'unsafe'; alerts[].kind = 'feasibility' on the triggering alert carries the same signal for callers that want the underlying reason. */
+                /** @description Per-activity scoring alerts (same shape as /v1/score). verdict = 'not_feasible' already distinguishes an impossible-but-not-dangerous read (e.g. no rideable wind) from 'unsafe'; alerts[].kind = 'feasibility' on the triggering alert carries the same signal for callers that want the underlying reason. alerts[].subject disambiguates same-`code` alerts (e.g. 'lightning' vs 'air_quality'). */
                 alerts?: ({
                     /** @enum {string} */
                     level?: "info" | "warning" | "critical";
@@ -3802,6 +3805,7 @@ export interface components {
                     description?: string;
                     /** @enum {string} */
                     kind?: "safety" | "feasibility";
+                    subject?: string;
                 } & {
                     [key: string]: unknown;
                 })[];
