@@ -6,6 +6,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.12.0] — 2026-08-13
+
+Contract re-sync to the live API (deployed). Additive; existing code keeps working.
+
+### Added
+
+- `alerts[].subject` on all scoring alerts (`/v1/score`, `/v1/score-series`,
+  `/v1/score-multi`, `/v1/score/multi` per-activity): a machine-readable slug
+  for the specific hazard, gate, or dimension an alert is about — the field that
+  disambiguates two alerts sharing the same `code`. Two `SAFETY_DATA_UNAVAILABLE`
+  warnings on one response now carry `subject: "lightning"` and `"air_quality"`,
+  so a consumer can tell which safety gate went unevaluated without parsing the
+  English `description`. On a gate-trip alert it is the gate's metric name (e.g.
+  `"wind_speed_kn"`); on the consolidated `SAFETY_GATE_UNEVALUATED` advisory it
+  is the comma-joined metric slug(s). Open string, not a closed enum.
+
+### Changed
+
+- `alerts[].kind` now also rides the safety-advisory warnings
+  (`SAFETY_GATE_UNEVALUATED`, `SAFETY_DATA_UNAVAILABLE`), always `"safety"`, so a
+  caller can treat "a safety check did not run" distinctly from an ordinary data
+  gap — previously it was documented only on gate-trip (critical) alerts. No type
+  change (still the same optional field); spec description synced.
+
 ## [0.11.0] — 2026-08-12
 
 Contract re-sync to the live API (PR #69, deployed). Additive; existing code keeps working.
