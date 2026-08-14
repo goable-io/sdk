@@ -21,3 +21,5 @@ export {
 } from "./errors.ts"
 export type * from "./types.ts"
 export { KNOWN_ACTIVITY_SLUGS } from "./generated/activitySlugs.ts"
+export { isSafetyHazardSubject, SAFETY_HAZARD_SUBJECTS } from "./safety.ts"
+export type { SafetyHazardSubject } from "./safety.ts"
