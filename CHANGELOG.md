@@ -6,6 +6,71 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.13.0] — 2026-08-14
+
+Contract re-sync to the live API (deployed) — catches the SDK up through
+contract **v0.6** (Sealect rounds 3–9). Type-additive: every new field is
+optional/derived, so existing code keeps compiling. One **behaviour** change to
+be aware of at the semantic level: the `unsafe` verdict is now reserved for
+danger (see *Changed*).
+
+### Added
+
+- **`confidence_normalized`** and **`confidence_ceiling`** on the score responses
+  (`/v1/score`, `/v1/score-multi`, `/v1/score-series`, forecast AND ensemble
+  reads). `confidence_ceiling` = `profile_maturity × hierarchical_calibration`
+  (the best `confidence` this profile+spot can reach); `confidence_normalized` =
+  server-computed `confidence / confidence_ceiling` ∈ [0,1]. Prefer these over a
+  hard-coded absolute-confidence threshold that silently expires as a profile
+  matures. Both are now in the response `required` set.
+- **`engine_version`** (required) on the three score responses — a single value
+  tracking BOTH engine behaviour and the API schema (= OpenAPI `info.version`).
+  You still don't send it on `POST /v1/outcomes`: link with `audit_log_id`
+  (the score's `session_id`) and the server resolves it.
+- **`dataCoverage`** now emitted on `/v1/score-multi` results and
+  `/v1/score-series` buckets (fraction of the window covered by real samples) —
+  previously documented but absent.
+- **`alerts[].source`** = `"observed" | "forecast"` on the lightning safety alert
+  (kind `"safety"`, subject `"lightning"`, evaluated `true`): whether the danger
+  signal is based on real observed strikes near the point or on forecast
+  convective instability only. One uniform field across `/v1/score` and
+  `/v1/score-multi`; ALWAYS `"forecast"` on `/v1/score-series` (observed strikes
+  are a nowcast, not looked up per bucket). `"observed"` is set only when an
+  observed reading actually drove the gate trip.
+- **`SAFETY_HAZARD_SUBJECTS`** exported (`["air_quality", "lightning"] as const`)
+  with the `SafetyHazardSubject` type and an `isSafetyHazardSubject()` guard —
+  the known, stable `alerts[].subject` slugs for the two universal safety gates.
+  `subject` stays an open string (a profile gate-trip subject is the tripped
+  gate's metric, e.g. `"wind_speed_kn"`), so this is the KNOWN safety-subject set,
+  not an exhaustive enum.
+- Closed **`unit`** enum on `GET /v1/activities` `dimensions[].unit`, and the full
+  frozen **`eco`** observation schema (buoy / SST / tide / METAR / river / snow /
+  currents / … sub-blocks) — both flow through the regenerated types.
+
+### Changed
+
+- **`unsafe` verdict reserved for DANGER only (behaviour).** It previously
+  conflated a safety hazard with a score/quality or no-data outcome. Now:
+  `unsafe` ⟺ a SAFETY gate trip (a real evaluated hazard); `not_feasible` ⟺ a
+  feasibility gate trip OR a no-data window (`scoreBasis:"no_data"`); a
+  uniformly-poor score that floors to 0 with no gate is `poor`. So a red
+  `unsafe` badge always means real danger. **Recheck any consumer that colours
+  or branches on the `unsafe` verdict for no-data or poor days** — a no-data read
+  is now `not_feasible` and a bad-but-safe day is `poor`. The `Verdict` and
+  `scoreBasis` union types are unchanged (same members) — only the emission
+  semantics moved, and the OpenAPI descriptions now document them fully.
+- **`unsafe ⟹ scoreBasis:"gated" ⟹ confidence = ceiling = normalized = 1`** now
+  holds uniformly, including on ENSEMBLE reads (it was previously broken on the
+  ensemble path across all three endpoints — a gated ensemble no-go reported a
+  spread-derived confidence < 1). A gated no-go is a CERTAIN outcome, so a
+  consumer that suppresses low-confidence numbers can rely on a gate-trip no-go
+  always clearing any confidence floor. Types unchanged; behaviour now matches
+  the documented invariant.
+- **`score` display guidance**: a `0` is not always "terrible" — on
+  `scoreBasis:"no_data"` it means "unknown", on `"gated"` a forced no-go. To
+  neutralise/hide the numeric score on a no-go, key on `scoreBasis !== "forecast"`
+  (both `"gated"` AND `"no_data"`), not `"gated"` alone.
+
 ## [0.12.0] — 2026-08-13
 
 Contract re-sync to the live API (deployed). Additive; existing code keeps working.

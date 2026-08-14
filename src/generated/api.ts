@@ -235,6 +235,29 @@ export interface paths {
                                  * @example water
                                  */
                                 family: string;
+                                /** @description This activity's scoring dimensions, each carrying its metric, unit, weight, and whether it is a hard feasibility prerequisite — enough to render a per-dimension breakdown without guessing units from metric names. */
+                                dimensions: {
+                                    /** @example Wind */
+                                    name: string;
+                                    /**
+                                     * @description The catalog metric this dimension scores.
+                                     * @example wind_speed_kn
+                                     */
+                                    metric: string;
+                                    /**
+                                     * @description Physical unit string (e.g. "knots", "m", "°C") for a physical metric; `null` when the metric is DIMENSIONLESS (an index / category / phase / score / factor / multiplier / proxy — NOT a percentage; probabilities/likelihoods are 0..1 dimensionless by design, so decide client-side whether to render ×100). Never inferred from the metric name — read from the server's canonical metric→unit registry. Closed set of current + reserved unit tokens (null = dimensionless index); adding a token is a contract change, so consumers may map exhaustively. `MED` = Minimal Erythemal Dose (the standard erythemal UV-exposure unit; carried by the `uv_dose_med` metric). `%` is RESERVED: no dimension emits it today (humidity / cloud-cover / precip-probability are not yet exposed as dimensions) — it is in the enum now so its first real use is not a breaking change. Convention note: current tokens mix spelled-out ("knots", "seconds") and symbolic ("m", "km", "°C") forms; any future normalisation of that would itself be breaking, so map the tokens verbatim.
+                                     * @example knots
+                                     * @enum {string|null}
+                                     */
+                                    unit: "knots" | "degrees" | "m" | "km" | "seconds" | "°C" | "mm/h" | "mm" | "kg/m³" | "hPa" | "MED" | "%" | null;
+                                    /**
+                                     * @description This dimension's scoring weight (0-1).
+                                     * @example 0.4
+                                     */
+                                    weight: number;
+                                    /** @description True when this dimension's metric carries a `kind: "feasibility"` gate — a HARD prerequisite that gates the whole score to 0 below/above its threshold, rather than merely being weighted (mirrors the scoring engine's feasibility-metric set). */
+                                    prerequisite: boolean;
+                                }[];
                             }[];
                         };
                     };
@@ -283,6 +306,29 @@ export interface paths {
                                 display_name: string;
                                 /** @example water */
                                 family: string;
+                                /** @description This activity's scoring dimensions, each carrying its metric, unit, weight, and whether it is a hard feasibility prerequisite — enough to render a per-dimension breakdown without guessing units from metric names. */
+                                dimensions: {
+                                    /** @example Wind */
+                                    name: string;
+                                    /**
+                                     * @description The catalog metric this dimension scores.
+                                     * @example wind_speed_kn
+                                     */
+                                    metric: string;
+                                    /**
+                                     * @description Physical unit string (e.g. "knots", "m", "°C") for a physical metric; `null` when the metric is DIMENSIONLESS (an index / category / phase / score / factor / multiplier / proxy — NOT a percentage; probabilities/likelihoods are 0..1 dimensionless by design, so decide client-side whether to render ×100). Never inferred from the metric name — read from the server's canonical metric→unit registry. Closed set of current + reserved unit tokens (null = dimensionless index); adding a token is a contract change, so consumers may map exhaustively. `MED` = Minimal Erythemal Dose (the standard erythemal UV-exposure unit; carried by the `uv_dose_med` metric). `%` is RESERVED: no dimension emits it today (humidity / cloud-cover / precip-probability are not yet exposed as dimensions) — it is in the enum now so its first real use is not a breaking change. Convention note: current tokens mix spelled-out ("knots", "seconds") and symbolic ("m", "km", "°C") forms; any future normalisation of that would itself be breaking, so map the tokens verbatim.
+                                     * @example knots
+                                     * @enum {string|null}
+                                     */
+                                    unit: "knots" | "degrees" | "m" | "km" | "seconds" | "°C" | "mm/h" | "mm" | "kg/m³" | "hPa" | "MED" | "%" | null;
+                                    /**
+                                     * @description This dimension's scoring weight (0-1).
+                                     * @example 0.4
+                                     */
+                                    weight: number;
+                                    /** @description True when this dimension's metric carries a `kind: "feasibility"` gate — a HARD prerequisite that gates the whole score to 0 below/above its threshold, rather than merely being weighted (mirrors the scoring engine's feasibility-metric set). */
+                                    prerequisite: boolean;
+                                }[];
                             }[];
                         };
                     };
@@ -2215,9 +2261,11 @@ export interface paths {
                                 distanceKm?: number;
                                 score?: number;
                                 effectiveScore?: number;
-                                verdict?: string;
+                                verdict?: components["schemas"]["Verdict"];
                                 personalScore?: number | null;
                                 personalWeight?: number;
+                                /** @description Count of the caller's own recorded outcomes at this spot that fed the personalization weighting (0 when no personalization context). Always returned. */
+                                personalOutcomes?: number;
                                 rank?: number;
                             }[];
                             allGated?: boolean;
@@ -3656,7 +3704,18 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** @enum {string} */
+        /**
+         * @description Go/no-go verdict. Three semantic groups — DANGER, NO-GO, and QUALITY — deliberately kept distinct so a consumer can colour them differently and a red 'danger' badge never loses its weight:
+         *
+         *     • `unsafe` = DANGER. Reserved EXCLUSIVELY for a SAFETY gate trip (a real evaluated hazard — lightning/AQI/a profile safety gate). It is NEVER assigned to a merely-poor score or a no-data window. So `unsafe` ⟺ danger: safe to colour red on its own.
+         *     • `not_feasible` = can't be done / can't be judged, but NOBODY is in danger. Emitted for a feasibility gate trip (e.g. no rideable wind) AND for a no-data window (`scoreBasis:"no_data"` — the activity couldn't be assessed here). A grey 'not possible' read, not a red one.
+         *     • `poor` < `marginal` < `fair` < `favorable` < `excellent` = QUALITY bands for a scored, feasible window. `poor` is the worst quality band (a usable-but-terrible day, including a score that floors to 0 without any gate) — NOT danger.
+         *
+         *     Colour guidance: red ⟺ `unsafe` OR the presence of a `kind:"safety"` alert (a low-confidence non-gated `unsafe` does not exist — see `scoreBasis`); grey ⟺ `not_feasible`; a quality ramp for `poor`..`excellent`. This mapping changed in contract v0.6: previously a no-data window and a uniformly-poor 0 also read `unsafe`, conflating danger with 'bad'/'unknown'.
+         *
+         *     IMPLICATION (verifiable in one line) — `unsafe` is produced ONLY by a hard SAFETY gate trip, and every gate trip sets `scoreBasis:"gated"` with `confidence` pinned to 1. So on /v1/score: `unsafe` ⟹ `scoreBasis:"gated"` ⟹ `confidence` = `confidence_ceiling` = `confidence_normalized` = 1, always. (On /v1/score-multi and /v1/score-series the per-item `scoreBasis` is not surfaced, but `confidence` = 1 on an `unsafe` item still holds.)
+         * @enum {string}
+         */
         Verdict: "unsafe" | "not_feasible" | "poor" | "marginal" | "fair" | "favorable" | "excellent";
         ScoreResponse: {
             /**
@@ -3664,8 +3723,15 @@ export interface components {
              * @description Stable id for this scored session (the `scoring_audit_log` row). Returned on every /v1/score response. Pass it back as `audit_log_id` on POST /v1/outcomes (or as the `:id` on POST /v1/score/:id/outcome) to link the observed outcome to this exact forecast, closing the calibration loop.
              */
             session_id: string;
+            /** @description Resolved catalog profile slug for the requested activity. Always returned. */
+            profile_slug: string;
+            /** @description Engine version that produced this score (matches the audit row's `engine_version`). This single version tracks BOTH engine behaviour (the score/confidence maths) AND the API schema — it is the same value as the OpenAPI `info.version` — so a bump means re-check BOTH: 'the numbers may have moved → recalibrate thresholds' AND 'the shape may have changed → update types'. You do NOT need to send it on POST /v1/outcomes: link the outcome with `audit_log_id` (this call's `session_id`) and the server resolves the engine version from the audit row it recorded at score time — `session_id` stays your single key. */
+            engine_version: string;
+            /** @description 0-100 suitability score. IMPORTANT for display: a `0` is NOT always 'terrible quality' — on `scoreBasis:"no_data"` it means 'unknown' (no samples), and on `scoreBasis:"gated"` it means 'forced no-go' (a hazard/infeasibility), not a graded 0. If you neutralise/hide the numeric score on a no-go, key that on `scoreBasis !== "forecast"` (i.e. BOTH `"gated"` AND `"no_data"`) — NOT on `"gated"` alone. As of contract v0.6 a no-data window reads `verdict:"not_feasible"` (was `unsafe`), so `"no_data"` now flows through the normal result path far more often than before; a consumer that hid the 0 only on `"gated"` will otherwise start rendering "0/100" on no-data reads. */
             score: number;
             verdict: components["schemas"]["Verdict"];
+            /** @description Fraction of scoring weight whose dimensions had real (non-fallback) input data. */
+            dataCoverage: number;
             /**
              * @description How much to trust this `score` — a [0,1] multiplicative product of `forecast_skill` × `provider_agreement` × `profile_maturity` × `hierarchical_calibration` × `coverage` (see `confidenceDetail` for the individual factors). It is HORIZON- and CALIBRATION-sensitive:
              *
@@ -3676,8 +3742,14 @@ export interface components {
              *     NOTE — intentional output shift: because `forecast_skill` decays with horizon and the cold-start factors were raised, `confidence` values differ from earlier releases. A near-term score now sits around ~0.55–0.62 (not the old ~0.41 flat baseline), and far-out scores read lower than near-term ones for the same location. This supersedes the previous documentation that described confidence as flat / independent of horizon / non-decaying. If you display or threshold on `confidence`, re-check your thresholds.
              */
             confidence: number;
+            /** @description The maximum `confidence` this profile + spot can currently reach — the product of the two STRUCTURALLY-capped factors, `profile_maturity × hierarchical_calibration`. ALWAYS present and strictly > 0 on a forecast read, so a consumer can rely on it as a divisor (for `confidence / confidence_ceiling`) or as a floor reference. The per-request factors (forecast_skill, provider_agreement, coverage) are all ≤ 1, so `confidence ≤ confidence_ceiling` always holds on the forecast path (on a gate trip both are the deterministic 1). Normalise `confidence / confidence_ceiling` ∈ [0,1] instead of hard-coding an absolute threshold that silently expires as a profile matures (provisional→reviewed→calibrated) or a spot gains local calibration — or read the server-computed `confidence_normalized` directly. Present on BOTH forecast AND ensemble reads (of /v1/score, /v1/score-multi and /v1/score-series): the ensemble confidence is folded through the same profile_maturity × hierarchical_calibration structure and its spread-derived agreement factor is ≤ 1, so `confidence ≤ confidence_ceiling` holds on the ensemble path too. */
+            confidence_ceiling: number;
+            /** @description Server-computed `confidence / confidence_ceiling` ∈ [0,1] — surfaced so consumers don't each re-implement the division (div-by-zero, rounding). Use this for a 'degraded vs the best achievable here' read; use raw `confidence` for an absolute-certainty floor (a 0.38 confidence on a 0.40-ceiling spot normalizes to ~0.95 but is still only 38% certain). Present wherever `confidence_ceiling` is (forecast AND ensemble reads of /v1/score, /v1/score-multi, /v1/score-series). */
+            confidence_normalized: number;
             /**
              * @description Explicit discriminator for why `score`/`verdict` came out the way they did. 'forecast' = the normal path, every profile gate passed. 'gated' = a hard gate (safety or feasibility) tripped — `score` is forced to 0, but `breakdown`/`physics` still carry the real per-dimension conditions (each breakdown entry's `contribution` is zeroed, since nothing contributed to the gated 0, while `suitability`/`hasData` and the physics values stay populated) so a no-go response shows WHY. 'no_data' = no weather samples were available at all, so `breakdown`/`physics` are genuinely empty. Do not infer gate/no-data from `breakdown` emptiness — a gate trip populates `breakdown` too; read this field instead.
+             *
+             *     INVARIANT — a `gated` response is a CERTAIN no-go: `score` is exactly 0, `verdict` is `unsafe` (a SAFETY gate) or `not_feasible` (a FEASIBILITY gate), and `confidence` = `confidence_ceiling` = `confidence_normalized` = exactly 1. A hard gate trip is a deterministic outcome, NEVER a low-confidence one — so a gated no-go can never arrive with a low `confidence`. Consumers that suppress low-confidence numbers can rely on this: a gate-trip no-go always clears any confidence floor. Independently, a `kind:"safety"` alert is emitted from the hazard evaluation itself, decoupled from `confidence`, so a safety signal is never filtered out by a confidence threshold. NOTE: `unsafe` is produced ONLY by a safety gate trip (never by a low score or a no-data window — see the `Verdict` schema), so a non-gated `unsafe` does not exist; a poor scored day is `poor`, a no-data window is `not_feasible`.
              * @enum {string}
              */
             scoreBasis: "forecast" | "gated" | "no_data";
@@ -3707,16 +3779,463 @@ export interface components {
                 /** @description Human-readable English explanation of the alert. Debug / fallback copy only — it is NOT localized. Localize your UI off `code`, not this field. */
                 description?: string;
                 /**
-                 * @description Why this alert matters: 'safety' = a danger dimension; 'feasibility' = impossible at any skill level (e.g. no rideable wind). On a gate-trip (critical) alert it explains the no-go. Also present on the safety-advisory warnings SAFETY_GATE_UNEVALUATED and SAFETY_DATA_UNAVAILABLE (always 'safety'), so a consumer can treat 'a safety check did not run' distinctly from an ordinary data gap. Absent on non-safety informational alerts. Present from catalog v2.4.0 (gate trips) / contract v0.5 (safety advisories).
+                 * @description What FAMILY this alert belongs to: 'safety' = a danger dimension; 'feasibility' = impossible at any skill level (e.g. no rideable wind). Present on every safety alert — gate trips AND the safety advisories (SAFETY_GATE_UNEVALUATED, SAFETY_DATA_UNAVAILABLE), always 'safety'. IMPORTANT: 'safety' does NOT by itself mean danger — a safety check that could not run also carries kind:'safety'. Use `evaluated` to tell an evaluated danger (red) from an unchecked hazard (amber); do NOT colour red off `kind` alone. Absent on non-safety informational alerts. Present from catalog v2.4.0 (gate trips) / contract v0.5 (safety advisories).
                  * @enum {string}
                  */
                 kind?: "safety" | "feasibility";
-                /** @description Machine-readable slug for the specific hazard, gate, or dimension this alert is about — the field to disambiguate two alerts that share the same `code`. Two SAFETY_DATA_UNAVAILABLE warnings on one response carry subject 'lightning' and 'air_quality' respectively, so a consumer can tell which safety gate went unevaluated without parsing the English `description`. On a gate-trip alert it is the gate's metric name (e.g. 'wind_speed_kn'); on the consolidated SAFETY_GATE_UNEVALUATED advisory it is the comma-joined metric slug(s). Open string, not a closed enum — new hazards/metrics add new values. Present from contract v0.5. */
+                /** @description Machine-readable slug for the specific hazard, gate, or dimension this alert is about — the field to disambiguate two alerts that share the same `code`. The UNIVERSAL safety hazards have stable, documentable subject slugs — `"lightning"` and `"air_quality"` — carried by both their gate-trip alerts and their SAFETY_DATA_UNAVAILABLE advisories; treat these two as the known safety-subject set (the SDK exports them). Two SAFETY_DATA_UNAVAILABLE warnings carry subject 'lightning' and 'air_quality' respectively; SAFETY_GATE_UNEVALUATED is emitted once PER unrun gate, each carrying a single slug (never a delimited list, so there is no format to parse). On a PROFILE gate-trip alert it is the gate's metric name (e.g. 'wind_speed_kn'), GUARANTEED to be drawn from the SAME `Metric` vocabulary as `dimensions[].metric` in GET /v1/activities — it is exactly the tripped gate's metric. So once you have fetched a profile's `dimensions` you know the finite set of gate subjects it can emit, and can localise hazard + gate subjects from ONE table instead of two that drift. Still typed as an open string (not a closed enum) for forward-compatibility as the catalog's metric set grows — keep a generic fallback. NOTE: today a metric slug embeds its unit (`wind_speed_kn`); the unit also travels as `dimensions[].unit`, so to localise a subject you currently parse the suffix. Stripping the unit from the slug (`wind_speed` + `unit:"knots"`) is a catalog-wide breaking change on the roadmap, not in this release. Present from contract v0.5. */
                 subject?: string;
+                /** @description For safety alerts only (kind:'safety'): did the safety gate actually run? true = the gate ran — on a critical alert it TRIPPED (dangerous conditions found → colour red), on a warning alert it found an elevated-but-not-critical condition. false = the gate could NOT be evaluated because its input was absent (SAFETY_GATE_UNEVALUATED, SAFETY_DATA_UNAVAILABLE) — the hazard is UNKNOWN, not absent (→ colour amber, never red). Orthogonal to `kind`: a consumer deciding 'dangerous vs merely unchecked' MUST branch on `evaluated`. Absent on non-safety alerts. Present from contract v0.6. */
+                evaluated?: boolean;
+                /**
+                 * @description For the lightning safety alert only (kind:'safety', subject:'lightning', evaluated:true): what the danger signal is based on. 'observed' = real observed strikes were detected near the point and factored into the gate (you MAY say 'observed lightning'). 'forecast' = forecast convective instability only (CAPE / lifted index); no observed strikes contributed — do NOT claim observed, and never write 'no lightning' off this. One uniform field across /v1/score, /v1/score-multi and /v1/score-series, so the observed-vs-forecast decision does not depend on reading the optional eco.lightning_observation block. Absent on the SAFETY_DATA_UNAVAILABLE (evaluated:false) lightning advisory and on every non-lightning alert. NOTE: on /v1/score-series this is ALWAYS 'forecast' — observed strikes are a nowcast (current strikes near the point) and are not looked up per forecast bucket, so a series can never say 'observed'; use /v1/score or /v1/score-multi for a now-read where 'observed' can appear. Present from contract v0.6.
+                 * @enum {string}
+                 */
+                source?: "observed" | "forecast";
             } & {
                 [key: string]: unknown;
             })[];
+            /**
+             * @description Best-effort OBSERVED context attached to the score. Where a live in-situ/satellite reading was in range, these blocks carry the real measurement that VALIDATED or OVERRODE the forecast value the score was computed from — provenance a consumer can surface as a "measured X at Y km" annotation. Every sub-block is OPTIONAL and station-dependent: a block is present only when a relevant gauge / moored buoy / satellite pass / station was in range and fresh for this request, so absence means "nothing observed nearby", never "conditions absent". Only the sub-fields documented here are contract-frozen; the rest of `eco` is still evolving and rides under `additionalProperties` — do NOT treat unlisted keys as stable.
+             *
+             *     TWO observed-SST sources, deliberately distinct: `buoy_validation.sst.observed_c` is the nearest moored-buoy IN-SITU physical measurement and is AUTHORITATIVE for a "measured N°C at K km" display when present; `sst_validation.observed_c` is the satellite/model observation used when no buoy is in range. A consumer wanting a measured local water temperature should prefer `buoy_validation.sst` when present, else fall back to `sst_validation`. Disambiguate on `source_type` (`in_situ_observation` vs `satellite_observation`) and compare `source_distance_km`.
+             */
             eco: {
+                /** @description Wind strength on the Beaufort scale (0..12) derived from the scored wind speed. Present when a wind signal was available for this activity. */
+                wind_beaufort?: number;
+                /** @description Deep-water wave energy flux in kW per metre of crest, derived from significant height and period. Present for wave-driven activities where a wave signal was available. */
+                wave_energy_kw_per_m?: number;
+                /**
+                 * @description Coarse energy band for the conditions ('low' | 'moderate' | 'high'). Always present — the one non-optional eco field.
+                 * @enum {string}
+                 */
+                energy_class?: "low" | "moderate" | "high";
+                /** @description True when the activity is human/wind/wave-powered with no motorised propulsion. Static catalog trait, present when known for the profile. */
+                carbon_neutral?: boolean;
+                /**
+                 * @description How much specialised gear the activity requires ('none' | 'low' | 'medium' | 'high'). Static catalog trait, present when known for the profile.
+                 * @enum {string}
+                 */
+                equipment_dependency?: "none" | "low" | "medium" | "high";
+                /** @description Number of weeks per year the activity is typically in season at this kind of location. Static catalog trait, present when known. */
+                typical_season_weeks?: number;
+                /**
+                 * @description How sensitive the site is to visitor load / crowding pressure ('low' | 'medium' | 'high'). Static catalog trait, present when known for the profile.
+                 * @enum {string}
+                 */
+                carrying_capacity_sensitivity?: "low" | "medium" | "high";
+                /** @description Moon phase and the day's golden-hour boundaries, computed from location + window for every score. Present on essentially every score; relevant to night dives, dawn/dusk sessions and photography-driven timing. Individual sub-fields are omitted when not computable. */
+                astronomy?: {
+                    /** @description Synodic lunar phase in [0,1): 0 = new moon, 0.25 = first quarter, 0.5 = full moon, 0.75 = last quarter. This is the PHASE, NOT the illuminated fraction (which would read 1.0 at full moon, not 0.5). */
+                    moon_phase?: number;
+                    /** @description ISO 8601 timestamp at which the morning golden hour ends. */
+                    golden_hour_morning_end?: string;
+                    /** @description ISO 8601 timestamp at which the evening golden hour begins. */
+                    golden_hour_evening_start?: string;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Static break/bottom characterisation for the spot. Present for surf-type profiles at a catalogued break. */
+                bathymetry?: {
+                    /** @description Catalogued break/spot name. */
+                    spot: string;
+                    /** @description Sea-bed type at the break (e.g. reef, sand, point). */
+                    bottom_type: string;
+                    /** @description Water depth at the break, m. */
+                    depth_at_break_m: number;
+                    /** @description Break-quality scaling factor applied for this bottom/spot. */
+                    quality_multiplier: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Convective lightning-risk annotation. Present when a lightning-proximity signal was computed for this request. Advisory or gating per `gate_decision`. */
+                lightning_advisory?: {
+                    /** @description Blended lightning proximity/risk score. */
+                    proximity_score: number;
+                    /**
+                     * @description 'GATED' = the risk tripped a safety gate; 'ADVISORY' = surfaced as a warning only.
+                     * @enum {string}
+                     */
+                    gate_decision: "GATED" | "ADVISORY";
+                    /** @description Human-readable reason for the decision, or null when none applies. */
+                    reason: string | null;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Air-quality annotation. Present when an AQI signal was available for this request. Advisory or gating per `gate_decision`. */
+                air_quality_advisory?: {
+                    /** @description Air Quality Index value. */
+                    aqi: number;
+                    /**
+                     * @description AQI category band the value falls into.
+                     * @enum {string}
+                     */
+                    category: "good" | "moderate" | "unhealthy_sensitive" | "unhealthy" | "very_unhealthy" | "hazardous";
+                    /**
+                     * @description 'GATED' = AQI tripped a safety gate; 'ADVISORY' = surfaced as a warning; 'OK' = within acceptable limits.
+                     * @enum {string}
+                     */
+                    gate_decision: "GATED" | "ADVISORY" | "OK";
+                    /** @description Human-readable reason for the decision, or null when none applies. */
+                    reason: string | null;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Coastal visibility hazards — sea-fog likelihood and a storm-surge proxy. Present when a coastal signal was computed for this request. */
+                coastal_advisory?: {
+                    /** @description Estimated likelihood of sea fog (0..1). */
+                    sea_fog_likelihood: number;
+                    /** @description Proxy indicator for storm-surge potential. */
+                    storm_surge_proxy: number;
+                    /** @description Combined estimated visibility in metres, when computable. */
+                    combined_visibility_m?: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Wave-breaking characterisation at the spot. Present for surf-type profiles where a wave signal and bathymetry allowed classification. */
+                breaker_classification?: {
+                    /**
+                     * @description Breaker type produced by the wave/bathymetry combination.
+                     * @enum {string}
+                     */
+                    type: "spilling" | "plunging" | "collapsing" | "surging";
+                    /** @description Breaking wave height, m. */
+                    height_m: number;
+                    /** @description Derived surf-quality score. */
+                    surf_quality: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description L1e — freeze-thaw + recent-precipitation rockfall risk. Present only for land/snow scores where a rockfall-history reader was wired AND the best-effort 7-day archive fetch succeeded. Advisory only: it annotates the score, it does not gate it. */
+                rockfall_advisory?: {
+                    /** @description Rockfall risk index (0..1) from `@goable-io/physics` alpine.rockfallRiskIndex. */
+                    risk_index: number;
+                    /**
+                     * @description Risk band the index falls into.
+                     * @enum {string}
+                     */
+                    band: "low" | "moderate" | "elevated" | "high";
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Satellite/model observed sea-surface temperature (CMEMS), used as the SST reference when NO in-situ buoy is in range. Present only when a nearby satellite SST observation existed for this request. Broad coverage but not a local physical measurement — prefer `buoy_validation.sst` for a "measured" display when that block is present. */
+                sst_validation?: {
+                    /**
+                     * @description Always `satellite_observation` — disambiguates this from the in-situ `buoy_validation.sst`.
+                     * @enum {string}
+                     */
+                    source_type: "satellite_observation";
+                    /** @description Observed satellite SST in °C. */
+                    observed_c: number;
+                    /** @description The forecast SST in °C this observation was compared against. */
+                    forecast_c: number;
+                    /** @description True when the observation agreed with the forecast (within tolerance). */
+                    validated: boolean;
+                    /** @description True when the observation replaced the forecast value in the samples scored. */
+                    overridden: boolean;
+                    /** @description Distance from the request point to the satellite observation, km. */
+                    source_distance_km: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Nearest moored-buoy IN-SITU reading. When present, its `sst` sub-block is the AUTHORITATIVE measured local water temperature (prefer it over `sst_validation`). One buoy reading carries independently-gated `wave`/`sst`/`wind` sub-blocks; each sub-block is present only when that variable was actually compared, and each can have OVERRIDDEN the forecast. Present only when a fresh moored buoy was in range for this request. */
+                buoy_validation?: {
+                    /**
+                     * @description Always `in_situ_observation` — the disambiguator marking this a physical measurement.
+                     * @enum {string}
+                     */
+                    source_type: "in_situ_observation";
+                    /** @description Identifier of the moored buoy that produced the reading. */
+                    station_id: string;
+                    /** @description Distance from the request point to the buoy, km. */
+                    source_distance_km: number;
+                    /** @description ISO 8601 timestamp of the buoy observation. */
+                    observed_at: string;
+                    /** @description In-situ measured sea-surface temperature — authoritative for a "measured N°C" display when present. */
+                    sst?: {
+                        /** @description Measured water temperature in °C. */
+                        observed_c: number;
+                        /** @description Forecast SST compared against, °C. */
+                        forecast_c: number;
+                        /** @description True when observation agreed with the forecast. */
+                        validated: boolean;
+                        /** @description True when the observation replaced the forecast in the scored samples. */
+                        overridden: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                    /** @description In-situ measured wave state. Kept loose — additional observed_*\/forecast_* variables may be added under additionalProperties. */
+                    wave?: {
+                        /** @description True when observation agreed with the forecast. */
+                        validated?: boolean;
+                        /** @description Measured significant wave height, m. */
+                        observed_m?: number;
+                        /** @description Forecast wave height compared against, m. */
+                        forecast_m?: number;
+                        /** @description True when the observation replaced the forecast in the scored samples. */
+                        overridden?: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                    /** @description In-situ measured wind. */
+                    wind?: {
+                        /** @description True when observation agreed with the forecast. */
+                        validated: boolean;
+                        /** @description Measured wind speed, m/s. */
+                        observed_ms: number;
+                        /** @description Forecast wind speed compared against, m/s. */
+                        forecast_ms: number;
+                        /** @description True when the observation replaced the forecast in the scored samples. */
+                        overridden: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                    /** @description Buoy-supplied wave period in seconds, when the reading carried it. */
+                    observed_wave_period_s?: number;
+                    /** @description Buoy-supplied wave direction in degrees, when the reading carried it. */
+                    observed_wave_direction_deg?: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description In-situ tide NOWCAST at the nearest fresh gauge — describes the tide NOW, says nothing about a future window. Present only when a fresh tide gauge was in range. `observed_level_m` rides along as provenance relative to `datum`; the meaningful, datum-independent signals are `trend`/`rate_m_per_h`/`range_position`, each omitted when recent history is too thin to state honestly. */
+                tide_observed?: {
+                    /**
+                     * @description Always `in_situ_observation`.
+                     * @enum {string}
+                     */
+                    source_type: "in_situ_observation";
+                    /** @description Latest observed water level relative to `datum`, m. Provenance only — prefer the relative nowcast fields. */
+                    observed_level_m: number;
+                    /** @description Reference datum for `observed_level_m` (often the gauge's own station zero). */
+                    datum: string;
+                    /** @description Identifier of the tide gauge. */
+                    station_id: string;
+                    /** @description Distance from the request point to the gauge, km. */
+                    source_distance_km: number;
+                    /** @description Age of the latest reading, minutes. */
+                    stale_minutes: number;
+                    /**
+                     * @description Direction of recent movement; `slack` near a high/low turn. Omitted when history is too thin.
+                     * @enum {string}
+                     */
+                    trend?: "rising" | "falling" | "slack";
+                    /** @description Signed rate of change, m/h (positive rising, negative falling). Omitted when history is too thin. */
+                    rate_m_per_h?: number;
+                    /** @description Position within the recent tidal range: 0 = recent low-water mark, 1 = recent high-water mark. Omitted when range is too thin to be meaningful. */
+                    range_position?: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description In-situ METAR station reading. Carries independently-gated `wind`/`visibility` sub-blocks, each present only when that variable was actually compared. Present only when a fresh METAR station was in range for this request. */
+                metar_validation?: {
+                    /**
+                     * @description Always `in_situ_observation`.
+                     * @enum {string}
+                     */
+                    source_type: "in_situ_observation";
+                    /** @description Identifier of the METAR station. */
+                    station_id: string;
+                    /** @description Distance from the request point to the station, km. */
+                    source_distance_km: number;
+                    /** @description ISO 8601 timestamp of the METAR observation. */
+                    observed_at: string;
+                    /** @description In-situ measured wind, present only when wind was compared. */
+                    wind?: {
+                        /** @description True when observation agreed with the forecast. */
+                        validated: boolean;
+                        /** @description Measured wind speed, m/s. */
+                        observed_ms: number;
+                        /** @description Forecast wind speed compared against, m/s. */
+                        forecast_ms: number;
+                        /** @description True when the observation replaced the forecast in the scored samples. */
+                        overridden: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                    /** @description In-situ measured visibility, present only when visibility was compared. */
+                    visibility?: {
+                        /** @description True when observation agreed with the forecast. */
+                        validated: boolean;
+                        /** @description Measured visibility, km. */
+                        observed_km: number;
+                        /** @description Forecast visibility compared against, km. */
+                        forecast_km: number;
+                        /** @description True when the observation replaced the forecast in the scored samples. */
+                        overridden: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description CMEMS ocean-colour provenance for the water-clarity index. Present whenever the clarity dimension was computed. `source` distinguishes a measured satellite Kd490 (with distance + valid date) from the rainfall-proxy fallback. */
+                cmems_clarity?: {
+                    /**
+                     * @description 'measured_ocean_colour' = satellite Kd490 observation; 'proxy' = rainfall-derived fallback when no ocean-colour reading was in range.
+                     * @enum {string}
+                     */
+                    source: "measured_ocean_colour" | "proxy";
+                    /** @description Derived water-clarity index used in scoring. */
+                    water_clarity_index: number;
+                    /** @description Measured diffuse attenuation coefficient Kd490 (m^-1); present only for the measured source. */
+                    kd490_m_inv?: number;
+                    /** @description Distance from the request point to the ocean-colour observation, km (measured source only). */
+                    source_distance_km?: number;
+                    /** @description Valid date of the ocean-colour observation (measured source only). */
+                    valid_date?: string;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description CMEMS surface-current provenance for tidal current speed. Present whenever a current value was produced. `source` records whether the value came from the harmonic model only, a measured CMEMS surface current, or the safety-conservative max of both. */
+                cmems_current?: {
+                    /**
+                     * @description 'harmonic' = model only; 'cmems_surface_current' = measured fill where the harmonic model is blind; 'combined' = safety-conservative max of both.
+                     * @enum {string}
+                     */
+                    source: "harmonic" | "cmems_surface_current" | "combined";
+                    /** @description Tidal/surface current speed, knots. */
+                    tidal_current_speed_kn: number;
+                    /** @description Distance from the request point to the CMEMS current observation, km (measured/combined only). */
+                    source_distance_km?: number;
+                    /** @description Valid date of the CMEMS current observation (measured/combined only). */
+                    valid_date?: string;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description #2 (funnel-spot false no-go fix) — one entry per feasibility gate whose FORECAST value would have tripped the gate while a fresh, nearby METAR/buoy wind observation was on the rideable side of that same boundary, so the observed wind was substituted into the scored samples instead of collapsing the score to 0. The resulting score is a genuine (typically low/marginal) value computed from the real observed wind — this array exists purely to explain WHY the day scored low-and-not-zero, never to imply the score was boosted. Deliberately independent of the *_validation blocks' own `wind.overridden` (a fixed m/s threshold): this can be non-empty even when that correction never fired, because the divergence that matters here is 'which side of the gate boundary'. Only wind metrics are covered today. Present (non-empty) only when such an override occurred; otherwise absent. */
+                feasibility_gate_overrides?: ({
+                    /** @description The feasibility metric that would have tripped (e.g. wind_speed_kn). */
+                    metric: string;
+                    /** @description Gate reason code that would have fired (e.g. NO_RIDABLE_WIND). */
+                    reason_code: string;
+                    /** @description The gate boundary value, knots. */
+                    gate_value_kn: number;
+                    /** @description The forecast value that would have tripped the gate, knots. */
+                    forecast_kn: number;
+                    /** @description The observed wind speed substituted into the scored samples, knots. */
+                    observed_kn: number;
+                    /**
+                     * @description Always `in_situ_observation` — the observation is a physical measurement.
+                     * @enum {string}
+                     */
+                    source_type: "in_situ_observation";
+                    /**
+                     * @description Which in-situ network supplied the observation.
+                     * @enum {string}
+                     */
+                    source: "metar" | "buoy";
+                    /** @description Identifier of the observing station/buoy. */
+                    station_id: string;
+                    /** @description Distance from the request point to the station, km. */
+                    source_distance_km: number;
+                    /** @description ISO 8601 timestamp of the observation. */
+                    observed_at: string;
+                } & {
+                    [key: string]: unknown;
+                })[];
+                /** @description F4 — satellite (CMEMS) wave observation used to VALIDATE or OVERRIDE the forecast wave height. Present only when a nearby, fresh CMEMS wave observation existed for this request. `observed_period_s`/`observed_direction_deg` ride along only when the CMEMS reading carried those variables. */
+                cmems_wave_validation?: {
+                    /**
+                     * @description Always `satellite_observation`.
+                     * @enum {string}
+                     */
+                    source_type: "satellite_observation";
+                    /** @description True when the observation agreed with the forecast (within tolerance). */
+                    validated: boolean;
+                    /** @description Observed significant wave height, m. */
+                    observed_height_m: number;
+                    /** @description Forecast wave height compared against, m. */
+                    forecast_height_m: number;
+                    /** @description True when the observation replaced the forecast in the scored samples. */
+                    overridden: boolean;
+                    /** @description Distance from the request point to the observation, km. */
+                    source_distance_km: number;
+                    /** @description Observed wave period, s (only when the reading carried it). */
+                    observed_period_s?: number;
+                    /** @description Observed wave direction, degrees (only when the reading carried it). */
+                    observed_direction_deg?: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description F3 — in-situ lightning-strike observation. Present only when an active strike reader was wired AND a nearby, fresh strike observation existed for this request. `applied: true` means the strike-derived proximity was the (tied-or-)winning contributor to the final blended lightning proximity — i.e. real strikes, not CAPE/LI, drove the reported value. */
+                lightning_observation?: {
+                    /**
+                     * @description Always `in_situ_observation`.
+                     * @enum {string}
+                     */
+                    source_type: "in_situ_observation";
+                    /** @description Number of strikes observed within range/window. */
+                    strike_count: number;
+                    /** @description Distance to the nearest observed strike, km. */
+                    nearest_km: number;
+                    /** @description ISO 8601 timestamp of the most recent observed strike. */
+                    most_recent_at: string;
+                    /** @description True when the strike-derived proximity drove the reported lightning proximity score. */
+                    applied: boolean;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Phase 2 §4.4 — VALIDATE-ONLY provenance for GloFAS-modeled river discharge near the spot. Present only when an active river-discharge reader was wired AND a nearby, fresh GloFAS reading existed for this request. `source_type` is `forecast_model` (GloFAS discharge is a hydrological forecast, NOT an in-situ observation, so the value reads `modeled_*`), and `overridden` is always false — the engine has no discharge variable to override. */
+                river_validation?: {
+                    /**
+                     * @description Always `forecast_model` — GloFAS discharge is a hydrological forecast, not an observation.
+                     * @enum {string}
+                     */
+                    source_type: "forecast_model";
+                    /** @description True when the modeled discharge was within the expected/tolerated range. */
+                    validated: boolean;
+                    /** @description GloFAS-modeled river discharge, m^3/s. */
+                    modeled_discharge_m3s: number;
+                    /**
+                     * @description Always false — validate-only; there is no discharge variable in the engine to override.
+                     * @enum {boolean}
+                     */
+                    overridden: false;
+                    /** @description Identifier of the GloFAS reach/station. */
+                    station_id: string;
+                    /** @description Distance from the request point to the reach, km. */
+                    source_distance_km: number;
+                    /** @description Age of the reading, minutes. */
+                    stale_minutes: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description Phase 2 §4.3 — VALIDATE-ONLY provenance for ERA5-Land-modeled snow near the spot. Present only when an active snow-cover reader was wired AND a nearby, fresh ERA5-Land reading existed for this request. `source_type` is `reanalysis` (ERA5-Land is a reanalysis product, NOT an in-situ/satellite observation, so values read `modeled_*`), and `overridden` is always false. `forecast_snow_depth_m`/`delta_m` are present only when both the modeled value and a forecast snow depth existed. */
+                snow_validation?: {
+                    /**
+                     * @description Always `reanalysis` — ERA5-Land is a reanalysis product, not an observation.
+                     * @enum {string}
+                     */
+                    source_type: "reanalysis";
+                    /** @description True when the modeled snow was within the expected/tolerated range. */
+                    validated: boolean;
+                    /** @description ERA5-Land modeled fractional snow cover, percent. */
+                    modeled_fractional_cover_pct: number;
+                    /** @description ERA5-Land modeled snow depth, m (when available). */
+                    modeled_snow_depth_m?: number;
+                    /** @description ERA5-Land modeled snow water equivalent, mm (when available). */
+                    modeled_swe_mm?: number;
+                    /** @description Forecast snow depth compared against, m (only when both existed). */
+                    forecast_snow_depth_m?: number;
+                    /** @description Gap between modeled and forecast snow depth, m (only when both existed). */
+                    delta_m?: number;
+                    /**
+                     * @description Always false — validate-only; the engine has no snow variable to override.
+                     * @enum {boolean}
+                     */
+                    overridden: false;
+                    /** @description Identifier of the ERA5-Land cell/station. */
+                    station_id: string;
+                    /** @description Distance from the request point to the cell, km. */
+                    source_distance_km: number;
+                    /** @description Age of the reading, minutes. */
+                    stale_minutes: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                /** @description English PROSE summary of the swell's origin. NOT localized and NOT a stable structured field — it is human-readable debug/annotation copy whose wording may change. Do not parse it or key UI off it; treat it as display-only English text. */
+                swell_origin_summary?: string;
+            } & {
                 [key: string]: unknown;
             };
             /** @description Present on ensemble requests */
@@ -3724,7 +4243,21 @@ export interface components {
                 [key: string]: unknown;
             };
             confidenceDetail?: components["schemas"]["ConfidenceDetailForecast"];
-            calibration_provenance?: components["schemas"]["CalibrationProvenance"] | null;
+            /** @description Provenance of any spatial hierarchical calibration applied to the score. Optional: the key is ABSENT (never null) when no spatial resolver is wired or no calibration was applied. */
+            calibration_provenance?: components["schemas"]["CalibrationProvenance"];
+            /** @description Pro+ output — present ONLY when the caller passed `rider_skill_level` AND a difficulty atlas existed for at least one of the profile's dimensions on the resolved sub-spot. Communicates how much knowing the rider's skill moved the verdict. */
+            skillConditioned?: {
+                /** @description The rider skill level the score was conditioned on. */
+                level: string;
+                /** @description The main `score` field of this response (skill-conditioned). */
+                score: number;
+                /** @description What the population curve (today's default) would have produced. */
+                populationScore: number;
+                /** @description score − populationScore. Negative = skill assumption lowered it (beginner at hard conditions); positive = skill assumption raised it (expert recognising favourable conditions). */
+                shift: number;
+                /** @description Cohort hash from the atlas row whose δ produced the conditioned curve. Same value as `confidenceDetail.skill_calibration.cohort_hash`. */
+                cohort_hash: string;
+            };
             assimilation?: {
                 [key: string]: unknown;
             };
@@ -3739,6 +4272,8 @@ export interface components {
             session_id: string;
             /** @description Resolved catalog profile slug for the requested activity. Always returned. */
             profile_slug: string;
+            /** @description Engine version that produced these scores. This single version tracks BOTH engine behaviour (the score/confidence maths) AND the API schema — it is the same value as the OpenAPI `info.version` — so a bump means re-check BOTH calibration thresholds AND types. NOTE: /v1/score/multi and /v1/score/series do NOT write an audit row (no linkable `audit_log_id`), so this response field is how you capture the engine version for a multi/series read. */
+            engine_version: string;
             /**
              * @description Bucket granularity used for the series (defaults to `hourly` when the request omits it). Always returned.
              * @enum {string}
@@ -3750,6 +4285,11 @@ export interface components {
                 score: number;
                 verdict: components["schemas"]["Verdict"];
                 confidence: number;
+                confidence_ceiling?: number;
+                /** @description Server-computed `confidence / confidence_ceiling` ∈ [0,1] — a 'degraded vs the best achievable here' read consumers don't each re-implement; use raw `confidence` for an absolute-certainty floor. Present on both forecast and ensemble buckets. */
+                confidence_normalized?: number;
+                /** @description Fraction of scoring weight whose dimensions had real (non-fallback) input data. */
+                dataCoverage?: number;
                 /** @description Per-bucket scoring alerts (same shape as /v1/score and /v1/score-multi). A bucket forced to unsafe/0 carries its gate reason here — alerts[].kind = 'safety' | 'feasibility'; alerts[].subject disambiguates same-`code` alerts (e.g. 'lightning' vs 'air_quality'). */
                 alerts: ({
                     /** @enum {string} */
@@ -3759,6 +4299,12 @@ export interface components {
                     /** @enum {string} */
                     kind?: "safety" | "feasibility";
                     subject?: string;
+                    evaluated?: boolean;
+                    /**
+                     * @description For the lightning safety alert only (kind:'safety', subject:'lightning', evaluated:true): what the danger signal is based on. 'observed' = real observed strikes were detected near the point and factored into the gate (you MAY say 'observed lightning'). 'forecast' = forecast convective instability only (CAPE / lifted index); no observed strikes contributed — do NOT claim observed, and never write 'no lightning' off this. One uniform field across /v1/score, /v1/score-multi and /v1/score-series, so the observed-vs-forecast decision does not depend on reading the optional eco.lightning_observation block. Absent on the SAFETY_DATA_UNAVAILABLE (evaluated:false) lightning advisory and on every non-lightning alert. NOTE: on /v1/score-series this is ALWAYS 'forecast' — observed strikes are a nowcast (current strikes near the point) and are not looked up per forecast bucket, so a series can never say 'observed'; use /v1/score or /v1/score-multi for a now-read where 'observed' can appear. Present from contract v0.6.
+                     * @enum {string}
+                     */
+                    source?: "observed" | "forecast";
                 } & {
                     [key: string]: unknown;
                 })[];
@@ -3774,6 +4320,8 @@ export interface components {
              * @description Correlation id for this multi-activity call. Always returned. NOTE: unlike a POST /v1/score `session_id`, this is NOT linkable — /v1/score/multi does not write a `scoring_audit_log` row, so passing it as `audit_log_id` on POST /v1/outcomes is rejected 404. Only single POST /v1/score session_ids close the calibration loop.
              */
             session_id: string;
+            /** @description Engine version that produced these scores. This single version tracks BOTH engine behaviour (the score/confidence maths) AND the API schema — it is the same value as the OpenAPI `info.version` — so a bump means re-check BOTH calibration thresholds AND types. NOTE: /v1/score/multi and /v1/score/series do NOT write an audit row (no linkable `audit_log_id`), so this response field is how you capture the engine version for a multi/series read. */
+            engine_version: string;
             location?: components["schemas"]["GeoPoint"];
             results: ({
                 activity: string;
@@ -3781,6 +4329,11 @@ export interface components {
                 score?: number;
                 verdict?: components["schemas"]["Verdict"];
                 confidence?: number;
+                confidence_ceiling?: number;
+                /** @description Server-computed `confidence / confidence_ceiling` ∈ [0,1] — a 'degraded vs the best achievable here' read consumers don't each re-implement; use raw `confidence` for an absolute-certainty floor. Present on both forecast and ensemble reads; absent only on error rows. */
+                confidence_normalized?: number;
+                /** @description Fraction of scoring weight whose dimensions had real (non-fallback) input data. */
+                dataCoverage?: number;
                 breakdown?: ({
                     name?: string;
                     value?: number;
@@ -3806,6 +4359,12 @@ export interface components {
                     /** @enum {string} */
                     kind?: "safety" | "feasibility";
                     subject?: string;
+                    evaluated?: boolean;
+                    /**
+                     * @description For the lightning safety alert only (kind:'safety', subject:'lightning', evaluated:true): what the danger signal is based on. 'observed' = real observed strikes were detected near the point and factored into the gate (you MAY say 'observed lightning'). 'forecast' = forecast convective instability only (CAPE / lifted index); no observed strikes contributed — do NOT claim observed, and never write 'no lightning' off this. One uniform field across /v1/score, /v1/score-multi and /v1/score-series, so the observed-vs-forecast decision does not depend on reading the optional eco.lightning_observation block. Absent on the SAFETY_DATA_UNAVAILABLE (evaluated:false) lightning advisory and on every non-lightning alert. NOTE: on /v1/score-series this is ALWAYS 'forecast' — observed strikes are a nowcast (current strikes near the point) and are not looked up per forecast bucket, so a series can never say 'observed'; use /v1/score or /v1/score-multi for a now-read where 'observed' can appear. Present from contract v0.6.
+                     * @enum {string}
+                     */
+                    source?: "observed" | "forecast";
                 } & {
                     [key: string]: unknown;
                 })[];
@@ -3868,6 +4427,8 @@ export interface components {
             /** @description [0,1] catalog-maturity factor: provisional 0.75 → reviewed 0.85 → calibrated 0.95. RISES as the activity profile is outcome-calibrated. */
             profile_maturity: number;
             hierarchical_calibration: number;
+            /** @description [0,1] fraction of scoring weight whose dimensions had real (non-fallback) input data (see the response's `dataCoverage`). Always emitted. Folded (smoothstep-shaped) into `confidence`, so a partial-data forecast reads correctly less confident; 1.0 = full coverage (no penalty). */
+            data_coverage: number;
             calibration_provenance?: components["schemas"]["CalibrationProvenanceSummary"];
             skill_calibration?: {
                 applied: boolean;
@@ -3889,6 +4450,8 @@ export interface components {
             base_climatology_quality: number;
             calibration_confidence: number;
             hierarchical_calibration: number;
+            /** @description [0,1] fraction of scoring weight whose dimensions had real (non-fallback) input data (see the response's `dataCoverage`). Always emitted. Folded (smoothstep-shaped) into the historical `confidence`; 1.0 = full coverage (no penalty). */
+            data_coverage: number;
             calibration_provenance?: components["schemas"]["CalibrationProvenanceSummary"];
             drift_flag?: components["schemas"]["DriftFlag"];
         } & {
