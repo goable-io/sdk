@@ -6,6 +6,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.14.0] — 2026-08-18
+
+Contract re-sync to the live API (deployed). Type-additive within contract
+**v0.6** — the new field is optional, so existing code keeps compiling.
+
+### Added
+
+- **`breakdown[].metric`** on the score responses (`/v1/score` and
+  `/v1/score-multi`). Each breakdown row now carries its `metric` — the closed,
+  versioned join key drawn from the fixed `Metric` vocabulary, IDENTICAL to
+  `dimensions[].metric` (GET /v1/activities) and to a profile gate's
+  `alerts[].subject`. Prefer it over `breakdown[].name` for attaching a unit
+  (join `breakdown[].metric` → `dimensions[].metric` → `dimensions[].unit`) or
+  wiring a per-dimension detail view, so hazard subjects and dimension rows key
+  off ONE vocabulary.
+
+### Changed
+
+- Schema docs now state explicitly that `breakdown[].name` / `dimensions[].name`
+  is **NOT end-user-facing text** — a snake_case join key, never a display
+  label. The `dimensions[].name` example was corrected from `"Wind"` to
+  `"wind_speed"` (the real runtime value), and `breakdown[].value`'s unit prose
+  was collapsed to a single pointer at `dimensions[].unit` (joined on `metric`).
+  Documentation-only; no type change.
+
 ## [0.13.0] — 2026-08-14
 
 Contract re-sync to the live API (deployed) — catches the SDK up through
