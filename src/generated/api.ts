@@ -237,10 +237,13 @@ export interface paths {
                                 family: string;
                                 /** @description This activity's scoring dimensions, each carrying its metric, unit, weight, and whether it is a hard feasibility prerequisite — enough to render a per-dimension breakdown without guessing units from metric names. */
                                 dimensions: {
-                                    /** @example Wind */
+                                    /**
+                                     * @description The dimension's bare profile identifier. NOT end-user-facing text: a snake_case join key (e.g. `wind_speed`), never a display label — do NOT render it in a UI. IDENTICAL to `breakdown[].name` in a /v1/score response (join `breakdown[].name` === `dimensions[].name`; do NOT normalise case or underscores). Distinct from `metric` below, the unit-suffixed metric slug. For joining breakdown rows to units prefer `metric` (a /v1/score breakdown entry now also carries `metric`, drawn from the same closed `Metric` vocabulary as `alerts[].subject`); `name` remains valid for `weight`/`prerequisite`.
+                                     * @example wind_speed
+                                     */
                                     name: string;
                                     /**
-                                     * @description The catalog metric this dimension scores.
+                                     * @description The catalog metric this dimension scores — the unit-suffixed metric slug from the closed, versioned `Metric` vocabulary. The SAME value a PROFILE gate-trip alert carries in `alerts[].subject` AND that a /v1/score `breakdown[].metric` carries (join `alerts[].subject` === `dimensions[].metric` === `breakdown[].metric` to localise a gate subject / attach a unit from ONE table). Distinct from `name` above (the bare join key).
                                      * @example wind_speed_kn
                                      */
                                     metric: string;
@@ -308,10 +311,13 @@ export interface paths {
                                 family: string;
                                 /** @description This activity's scoring dimensions, each carrying its metric, unit, weight, and whether it is a hard feasibility prerequisite — enough to render a per-dimension breakdown without guessing units from metric names. */
                                 dimensions: {
-                                    /** @example Wind */
+                                    /**
+                                     * @description The dimension's bare profile identifier. NOT end-user-facing text: a snake_case join key (e.g. `wind_speed`), never a display label — do NOT render it in a UI. IDENTICAL to `breakdown[].name` in a /v1/score response (join `breakdown[].name` === `dimensions[].name`; do NOT normalise case or underscores). Distinct from `metric` below, the unit-suffixed metric slug. For joining breakdown rows to units prefer `metric` (a /v1/score breakdown entry now also carries `metric`, drawn from the same closed `Metric` vocabulary as `alerts[].subject`); `name` remains valid for `weight`/`prerequisite`.
+                                     * @example wind_speed
+                                     */
                                     name: string;
                                     /**
-                                     * @description The catalog metric this dimension scores.
+                                     * @description The catalog metric this dimension scores — the unit-suffixed metric slug from the closed, versioned `Metric` vocabulary. The SAME value a PROFILE gate-trip alert carries in `alerts[].subject` AND that a /v1/score `breakdown[].metric` carries (join `alerts[].subject` === `dimensions[].metric` === `breakdown[].metric` to localise a gate subject / attach a unit from ONE table). Distinct from `name` above (the bare join key).
                                      * @example wind_speed_kn
                                      */
                                     metric: string;
@@ -3754,8 +3760,17 @@ export interface components {
              */
             scoreBasis: "forecast" | "gated" | "no_data";
             breakdown: ({
+                /**
+                 * @description The dimension's bare profile identifier. NOT end-user-facing text: it is a snake_case join key (e.g. `wind_speed`), never a display label — do NOT render it in a UI. IDENTICAL to `dimensions[].name` in GET /v1/activities, and distinct from the unit-suffixed `metric` (e.g. `wind_speed_kn`). For joining to units / a per-dimension detail view prefer `metric` below (drawn from the closed, versioned `Metric` vocabulary shared with `dimensions[].metric` and `alerts[].subject`); `name` remains a valid join to `dimensions[].name` for `weight`/`prerequisite`.
+                 * @example wind_speed
+                 */
                 name?: string;
-                /** @description The raw physical reading for this dimension, in its native unit — this is the operational number to show an operator. Units are per-dimension: wind is KNOTS (e.g. `wind_speed`), wave height METRES (`wave` / `wave_height`), wave period SECONDS (`wave_period`), temperature °C (`air_temp_comfort`, `water_temp`), visibility KM (`visibility`), direction DEGREES. (The engine's full derived `summary` block is intentionally not returned; read operational numbers from here.) */
+                /**
+                 * @description The dimension's underlying METRIC — the closed, versioned join key drawn from the fixed `Metric` vocabulary, IDENTICAL to `dimensions[].metric` in GET /v1/activities and to a profile gate's `alerts[].subject`. This is the STABLE key for joining a breakdown row to its `unit` (via `dimensions[].metric` → `dimensions[].unit`) or to a per-dimension detail view — preferred over `name` for that purpose because it is the same vocabulary the safety `subject` uses, so hazard + dimension keys localise from ONE table. Present from contract v0.6.
+                 * @example wind_speed_kn
+                 */
+                metric?: string;
+                /** @description The raw physical reading for this dimension, in its native unit — the operational number to show an operator. The unit is NOT declared here: read it from `dimensions[].unit` in GET /v1/activities, joined on `metric` (this entry's `metric` === `dimensions[].metric`) — that registry-generated field is the single machine-readable source of truth for units, so this prose never repeats (and can never drift from) it. (The engine's full derived `summary` block is intentionally not returned; read operational numbers from here.) */
                 value?: number;
                 /** @description 0-1 desirability of `value` for this activity (the profile curve's output) — good for a per-dimension green/amber/red indicator. Distinct from `value`: `value` is the measurement, `suitability` is how good that measurement is. */
                 suitability?: number;
@@ -4335,7 +4350,10 @@ export interface components {
                 /** @description Fraction of scoring weight whose dimensions had real (non-fallback) input data. */
                 dataCoverage?: number;
                 breakdown?: ({
+                    /** @description Bare profile join key — NOT end-user-facing text. See /v1/score breakdown[].name; prefer `metric` for unit joins. */
                     name?: string;
+                    /** @description The dimension's metric from the closed `Metric` vocabulary — IDENTICAL to `dimensions[].metric` / `alerts[].subject`; the stable key to attach a unit or a per-dimension detail view. See /v1/score breakdown[].metric. Present from contract v0.6. */
+                    metric?: string;
                     value?: number;
                     suitability?: number;
                     weight?: number;
